@@ -1,7 +1,7 @@
 {
-  "name": "Pal Lab",
-  "short_name": "Pal Lab",
-  "description": "Save-aware Palworld breeding planner. Drop your save and solve optimal breeding paths from the pals you actually own. Parsed locally; your save never leaves your device.",
+  "name": "Smitty's ATLAS",
+  "short_name": "ATLAS",
+  "description": "Save-aware Palworld companion and breeding planner. Drop your save and solve optimal breeding paths from the pals you actually own. Parsed locally; your save never leaves your device.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

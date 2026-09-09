@@ -1,13 +1,13 @@
 # Third-Party Notices
 
-Pal Lab bundles or derives from third-party material. This file lists that
+Smitty's ATLAS bundles or derives from third-party material. This file lists that
 material, its origin, and its license. It supplements — and does not replace —
 the per-directory `NOTICE`/`README.md` files vendored alongside the code and
 data (referenced below); consult those for the fuller, file-level detail.
 
-The distributed Pal Lab desktop binary combines these components. Every one of
+The distributed Smitty's ATLAS desktop binary combines these components. Every one of
 them — including the `oozextract` Oodle decompressor (below) — is permissively
-licensed, so Pal Lab is distributed under the **MIT License** (see the root
+licensed, so Smitty's ATLAS is distributed under the **MIT License** (see the root
 `LICENSE`). The `pal-data` and `pal-solver` crates additionally carry their own
 MIT `LICENSE` for reuse outside the combined binary.
 
@@ -74,7 +74,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   toolchain dependency.
 
 Because oozextract is MIT-licensed, linking it into `pal-save` and thence into
-the desktop app imposes no copyleft obligation: the combined Pal Lab binary
+the desktop app imposes no copyleft obligation: the combined Smitty's ATLAS binary
 ships under the MIT License.
 
 ---
@@ -151,5 +151,5 @@ ships under the MIT License.
 
 ## Palworld
 
-Palworld and all related data, names, and artwork are © Pocketpair, Inc. Pal Lab
+Palworld and all related data, names, and artwork are © Pocketpair, Inc. ATLAS
 is an unofficial fan tool and is not affiliated with or endorsed by Pocketpair.

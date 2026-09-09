@@ -986,7 +986,7 @@ export default function Solver() {
     // Record successful solves only (a zero-plan "no path" is not history-worthy).
     if (outcome.response.plans.length > 0) {
       pushHistoryEntry({
-        storageKey: "pal-lab.solveHistory",
+        storageKey: "atlas.solveHistory",
         request: outcome.request,
         response: outcome.response,
         activePlan: 0,
@@ -1516,7 +1516,7 @@ export default function Solver() {
           onClose={() => setHistoryOpen(false)}
           nameToId={nameToId}
           onRestore={restoreFromHistory}
-          storageKey="pal-lab.solveHistory"
+          storageKey="atlas.solveHistory"
           title="Recent solves"
           ariaLabel="Solve history"
           variant="solver"

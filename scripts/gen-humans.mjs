@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Regenerates app/src/lib/humans.json and downloads human/bounty portrait icons
-// into app/public/humans/. Humans are presentation-only in Pal Lab (no Rust /
+// into app/public/humans/. Humans are presentation-only in ATLAS (no Rust /
 // pack changes) — this vendors the aggregated human-NPC data + portrait art from
 // oMaN-Rod/palworld-save-pal (MIT), which is ultimately Palworld game data/art
 // (c) Pocketpair. See THIRD-PARTY-NOTICES.md.

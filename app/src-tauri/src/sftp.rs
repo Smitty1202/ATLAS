@@ -39,7 +39,7 @@ const SFTP_SENTINEL_PREFIX: &str = "sftp://";
 
 /// Known-hosts store filename under the Tauri app config dir. Maps `host:port`
 /// to a pinned SHA256 host-key fingerprint. Secrets NEVER touch this file.
-const KNOWN_HOSTS_FILE: &str = "pal-lab.sftp.knownHosts.json";
+const KNOWN_HOSTS_FILE: &str = "atlas.sftp.knownHosts.json";
 
 /// TCP + SSH handshake budget for [`sftp_connect`].
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -597,7 +597,7 @@ fn is_disconnect_class(e: &russh::Error) -> bool {
 /// just means the goodbye can't be delivered, which is fine.
 async fn graceful_bye(handle: &Handle<ClientHandler>) {
     let _ = handle
-        .disconnect(russh::Disconnect::ByApplication, "pal-lab: session closed", "")
+        .disconnect(russh::Disconnect::ByApplication, "atlas: session closed", "")
         .await;
 }
 
@@ -1169,7 +1169,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static N: AtomicUsize = AtomicUsize::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("pal-lab-sftp-test-{tag}-{n}/known.json"))
+        std::env::temp_dir().join(format!("atlas-sftp-test-{tag}-{n}/known.json"))
     }
 
     #[test]

@@ -1,4 +1,4 @@
-// Ambient declarations for the File System Access API surface Pal Lab's web
+// Ambient declarations for the File System Access API surface used by ATLAS web
 // save-loading uses (lib/save-drop.ts). TS's lib.dom ships `FileSystemHandle` /
 // `FileSystemDirectoryHandle` (via drag-drop) but omits the non-standard
 // directory picker, the async `entries()` iterator, and the permission methods.

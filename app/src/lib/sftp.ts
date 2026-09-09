@@ -1,7 +1,7 @@
 // Desktop SFTP save source: a Palworld world loaded live from a dedicated
 // server over SSH. Like the Xbox source, an SFTP world has no local filesystem
 // folder, so it is identified by a *sentinel* string stored in the same slot as
-// a folder path (localStorage `pal-lab.saveDir`, the recents list, and
+// a folder path (localStorage `atlas.saveDir`, the recents list, and
 // `AppState.saveDir`). Everything that persists or invokes with a save path
 // treats the sentinel like any other string; the desktop Rust commands decode
 // it (mirrors `decodeSftpSource` / Rust `rsplit_once('#')`).
@@ -107,7 +107,7 @@ export function decodeSftpSource(dir: string): SftpSource | null {
 }
 
 /** localStorage key for the last-used SFTP profile (no secrets). */
-export const SFTP_PROFILE_KEY = "pal-lab.sftpProfile";
+export const SFTP_PROFILE_KEY = "atlas.sftpProfile";
 
 /** Persist the non-secret connection profile for prefilling the connect modal
  *  and boot-restore reconnect. Only the profile fields are written — never

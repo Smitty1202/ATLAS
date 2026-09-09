@@ -290,7 +290,7 @@ export default function IvLab() {
     // Record successful solves only (a zero-plan "no line" is not history-worthy).
     if (outcome.response.plans.length > 0) {
       pushHistoryEntry({
-        storageKey: "pal-lab.ivLabHistory",
+        storageKey: "atlas.ivLabHistory",
         request: outcome.request,
         response: outcome.response,
         activePlan: 0,
@@ -812,7 +812,7 @@ export default function IvLab() {
           onClose={() => setHistoryOpen(false)}
           nameToId={nameToId}
           onRestore={restoreFromHistory}
-          storageKey="pal-lab.ivLabHistory"
+          storageKey="atlas.ivLabHistory"
           title="Recent IV lines"
           ariaLabel="IV line history"
           variant="ivlab"

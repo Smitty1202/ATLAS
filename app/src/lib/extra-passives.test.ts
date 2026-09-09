@@ -68,8 +68,8 @@ test("absent storage defaults to auto", () => {
 });
 
 test("corrupt or out-of-range stored value falls back to auto", () => {
-  localStorage.setItem("pal-lab.extraPassives", "not json");
+  localStorage.setItem("atlas.extraPassives", "not json");
   expect(readExtraPassives()).toEqual({ mode: "auto" });
-  localStorage.setItem("pal-lab.extraPassives", JSON.stringify({ mode: "set", value: 3 }));
+  localStorage.setItem("atlas.extraPassives", JSON.stringify({ mode: "set", value: 3 }));
   expect(readExtraPassives()).toEqual({ mode: "auto" });
 });

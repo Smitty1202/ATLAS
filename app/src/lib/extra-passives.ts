@@ -21,7 +21,7 @@ export type ExtraPassivesPref =
   | { mode: "set"; value: ExtraPassivesValue };
 
 /** localStorage key for the persisted preference. */
-const STORAGE_KEY = "pal-lab.extraPassives";
+const STORAGE_KEY = "atlas.extraPassives";
 
 /** Segmented-control options, loosest-first — the pinned UI labels. */
 export const EXTRA_PASSIVES_OPTIONS: {

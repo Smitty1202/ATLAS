@@ -70,7 +70,7 @@ jobs:
           Write-Host "Exe: $exePath"
 
           # Portable zip: just the self-contained exe.
-          $zipName = "PalLab_${version}_portable_x64.zip"
+          $zipName = "ATLAS_${version}_portable_x64.zip"
           Compress-Archive -Path $exePath -DestinationPath $zipName -Force
           Write-Host "Portable: $zipName"
 
@@ -87,7 +87,7 @@ jobs:
             ${{ steps.package.outputs.setup }}
             ${{ steps.package.outputs.portable }}
           body: |
-            ## Pal Lab ${{ steps.package.outputs.version }}
+            ## Smitty's ATLAS ${{ steps.package.outputs.version }}
 
             **Windows SmartScreen:** this is an unsigned build. If SmartScreen
             warns you, click **More info -> Run anyway**.
@@ -95,7 +95,7 @@ jobs:
             <!-- VirusTotal: paste scan link before publishing -->
 
             ### Install
-            Download `Pal Lab_${{ steps.package.outputs.version }}_x64-setup.exe`
+            Download the Smitty's ATLAS installer
             and run it, or grab the portable `.zip` and run the exe directly.
 
             **Xbox/Game Pass saves:** convert with

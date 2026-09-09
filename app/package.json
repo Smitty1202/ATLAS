@@ -1,7 +1,9 @@
 {
-  "name": "pal-lab",
+  "name": "atlas",
   "private": true,
-  "version": "1.10.1",
+  "version": "0.1.0",
+  "description": "Smitty's ATLAS - Palworld companion and save-analysis application.",
+  "author": "Smitty1202",
   "type": "module",
   "scripts": {
     "dev": "vite",

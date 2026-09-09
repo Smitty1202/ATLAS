@@ -28,7 +28,10 @@ use serde::{Deserialize, Serialize};
 /// whose payload shape [`GhRelease`] mirrors. `releases/latest` excludes drafts
 /// and prereleases, so only stable published releases are ever offered to users.
 const UPDATE_MANIFEST_URL: Option<&str> =
-    Some("https://api.github.com/repos/Wire15/pal-lab/releases/latest");
+    Some("https://api.github.com/repos/Smitty1202/ATLAS/releases/latest");
+
+/// Standards-safe HTTP User-Agent for the public GitHub Releases probe.
+const UPDATE_USER_AGENT: &str = "Smittys-ATLAS/0.1.0";
 
 /// Result of an update check. `status` is one of
 /// `"disabled" | "up_to_date" | "update_available" | "error"`. The optional
@@ -109,7 +112,7 @@ fn fetch_manifest(url: &str) -> Result<String, String> {
         .build();
     let body = agent
         .get(url)
-        .set("User-Agent", "pal-lab/1.0.0")
+        .set("User-Agent", UPDATE_USER_AGENT)
         .set("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| e.to_string())?
@@ -195,10 +198,10 @@ mod tests {
     /// A trimmed but shape-accurate GitHub "latest release" payload, including
     /// fields we ignore (to prove unknown fields are tolerated).
     const RELEASE_FIXTURE: &str = r#"{
-        "url": "https://api.github.com/repos/Wire15/pal-lab/releases/123",
-        "html_url": "https://github.com/Wire15/pal-lab/releases/tag/v0.3.0",
+        "url": "https://api.github.com/repos/Smitty1202/ATLAS/releases/123",
+        "html_url": "https://github.com/Smitty1202/ATLAS/releases/tag/v0.3.0",
         "tag_name": "v0.3.0",
-        "name": "Pal Lab 0.3.0",
+        "name": "Smitty's ATLAS 0.3.0",
         "draft": false,
         "prerelease": false,
         "published_at": "2026-08-01T00:00:00Z",
@@ -212,7 +215,7 @@ mod tests {
         assert_eq!(check.latest.as_deref(), Some("0.3.0"));
         assert_eq!(
             check.url.as_deref(),
-            Some("https://github.com/Wire15/pal-lab/releases/tag/v0.3.0")
+            Some("https://github.com/Smitty1202/ATLAS/releases/tag/v0.3.0")
         );
         assert!(check.notes.as_deref().unwrap().contains("Viewing Cage"));
     }
@@ -274,7 +277,12 @@ mod tests {
     fn manifest_url_is_wired() {
         assert_eq!(
             UPDATE_MANIFEST_URL,
-            Some("https://api.github.com/repos/Wire15/pal-lab/releases/latest")
+            Some("https://api.github.com/repos/Smitty1202/ATLAS/releases/latest")
         );
+    }
+
+    #[test]
+    fn user_agent_identifies_atlas() {
+        assert_eq!(UPDATE_USER_AGENT, "Smittys-ATLAS/0.1.0");
     }
 }

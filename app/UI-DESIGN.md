@@ -1,4 +1,4 @@
-# Pal Lab — UI Design Contract
+# Smitty's ATLAS - UI Design Contract
 
 Binding reference for every view. Round 2 (Pal-dex grid, breeding-tree
 extensions) MUST follow this verbatim. The source of truth for values is

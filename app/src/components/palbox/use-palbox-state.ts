@@ -9,8 +9,8 @@ import { DEFAULT_QUERY, type PalboxQuery } from "./selectors";
 
 export type PalboxMode = "grid" | "list";
 
-const PLAYER_KEY = "pal-lab.palbox.player";
-const MODE_KEY = "pal-lab.palbox.mode";
+const PLAYER_KEY = "atlas.palbox.player";
+const MODE_KEY = "atlas.palbox.mode";
 
 /** A useState whose value is mirrored to localStorage, tolerant of no storage. */
 function usePersistedState<T extends string>(

@@ -1,6 +1,6 @@
 // The PLANS drawer: a right-slide panel listing saved breeding plans, with
 // load / rename / delete / compare-two per row plus an import-code field. The
-// saved-plan localStorage layer (contract `pal-lab.savedPlans`, cap 50, LRU
+// saved-plan localStorage layer (contract `atlas.savedPlans`, cap 50, LRU
 // evict oldest-unnamed-first) lives here since the drawer owns the saved-plan
 // model; the Solver imports `saveNewPlan`/`defaultPlanName` for its header CTA.
 //
@@ -26,7 +26,7 @@ import {
   type PlanTracking,
 } from "../lib/plan-tracking";
 
-const STORAGE_KEY = "pal-lab.savedPlans";
+const STORAGE_KEY = "atlas.savedPlans";
 const CAP = 50;
 
 /** A persisted breeding plan (frozen contract shape). */

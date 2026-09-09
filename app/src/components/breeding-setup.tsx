@@ -27,10 +27,10 @@ import { useAppState, useBreedingSetup } from "../state";
 
 /** localStorage keys for this panel's own UI inputs (the composed setup itself
  * lives in the shared store). */
-const SELECTED_KEY = "pal-lab.setup.boosters";
-const MANUAL_HATCH_KEY = "pal-lab.setup.manualHatch";
+const SELECTED_KEY = "atlas.setup.boosters";
+const MANUAL_HATCH_KEY = "atlas.setup.manualHatch";
 /** Map of lab-research line key -> researched rank (0 = not researched). */
-const RESEARCH_KEY = "pal-lab.setup.research";
+const RESEARCH_KEY = "atlas.setup.research";
 
 /** Farm-speed boosts shorten each breed attempt as `time / (1 + bonus)`, so a
  * `+bonus` fraction reduces breed time by this percentage (non-linear). */
@@ -953,7 +953,7 @@ export function BreedingSetupPanel() {
             Any breeding step can yield a <span className="text-ink">Mutated Egg</span> that
             hatches a different, stronger species than the pair&rsquo;s normal child. The
             rate is verified from the game&rsquo;s data; <span className="text-ink">which</span>{" "}
-            species it becomes hasn&rsquo;t been publicly decoded &mdash; so Pal Lab treats
+            species it becomes hasn&rsquo;t been publicly decoded &mdash; so ATLAS treats
             mutations as a bonus and never builds plans that depend on one.
           </p>
         </div>

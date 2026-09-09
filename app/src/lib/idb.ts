@@ -1,5 +1,5 @@
 // Shared IndexedDB plumbing for the web save-memory helpers. The app keeps two
-// kinds of save memory in one database ("pal-lab"): a `FileSystemDirectoryHandle`
+// kinds of save memory in one database ("atlas"): a `FileSystemDirectoryHandle`
 // (Chromium-only live re-read, in the "handles" store) and a byte snapshot of the
 // loaded bundle (universal fallback, in the "snapshots" store). Both are opened
 // through THIS module's single `openDb` so they agree on the schema version.
@@ -15,7 +15,7 @@
 // can pass an in-memory fake — bun has no `indexedDB` global.
 
 /** The single database both save-memory stores live in. */
-export const DB_NAME = "pal-lab";
+export const DB_NAME = "atlas";
 
 /** Schema version. Bumped 1→2 when the "snapshots" store was added; every store
  *  the app uses is created in the one `onupgradeneeded` below. */

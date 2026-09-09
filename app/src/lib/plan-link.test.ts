@@ -20,7 +20,7 @@ interface LocationStub {
 /** Install a location + history stub and return the location for mutation. */
 function stubUrl(over: Partial<LocationStub> = {}): LocationStub {
   const loc: LocationStub = {
-    origin: "https://preview.pal-lab.pages.dev",
+    origin: "https://preview.atlas.pages.dev",
     pathname: "/",
     search: "",
     hash: "",
@@ -55,21 +55,21 @@ afterEach(() => {
 });
 
 test("planUrl builds an origin-rooted #plan fragment", () => {
-  stubUrl({ origin: "https://preview.pal-lab.pages.dev" });
+  stubUrl({ origin: "https://preview.atlas.pages.dev" });
   expect(planUrl("ABC123")).toBe(
-    "https://preview.pal-lab.pages.dev/#plan=ABC123",
+    "https://preview.atlas.pages.dev/#plan=ABC123",
   );
 });
 
 test("planUrl uses the live origin so preview deploys stay self-referential", () => {
-  stubUrl({ origin: "https://deadbeef.pal-lab.pages.dev" });
-  expect(planUrl("xyz")).toBe("https://deadbeef.pal-lab.pages.dev/#plan=xyz");
+  stubUrl({ origin: "https://deadbeef.atlas.pages.dev" });
+  expect(planUrl("xyz")).toBe("https://deadbeef.atlas.pages.dev/#plan=xyz");
 });
 
 test("planUrl percent-encodes payloads that aren't URL-safe", () => {
   stubUrl();
   expect(planUrl("a b/c+d=e&f")).toBe(
-    "https://preview.pal-lab.pages.dev/#plan=a%20b%2Fc%2Bd%3De%26f",
+    "https://preview.atlas.pages.dev/#plan=a%20b%2Fc%2Bd%3De%26f",
   );
 });
 

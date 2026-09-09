@@ -1,7 +1,7 @@
-// Pal Lab service worker — hand-rolled, no build step, no workbox.
+// ATLAS service worker — hand-rolled, no build step, no workbox.
 //
 // WHY hand-rolled: the web build ships as a static bundle (`vite build --mode
-// web`) to pal-lab.pages.dev. All we want from a SW is (1) an installable PWA
+// web`) to atlas.pages.dev. All we want from a SW is (1) an installable PWA
 // and (2) an offline shell so a returning visitor still gets the app when the
 // network is gone. That is a few caching rules — not worth a plugin + workbox
 // runtime, and adding one would violate the no-new-deps constraint for this
@@ -14,9 +14,9 @@
 // strip headers here, which would silently break cross-origin isolation.
 
 // Bump this literal whenever the caching STRATEGY below changes. `activate`
-// deletes every `pal-lab-*` cache that is not the current one, so a version
+// deletes every `atlas-*` cache that is not the current one, so a version
 // bump cleanly evicts a stale strategy's entries on the next activation.
-const CACHE = "pal-lab-v1";
+const CACHE = "atlas-v1";
 
 // The offline shell. The app is a SPA: any navigation resolves to index.html
 // ("/"), which then boots and hydrates from the (separately cached) hashed
@@ -40,7 +40,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k.startsWith("pal-lab-") && k !== CACHE)
+            .filter((k) => k.startsWith("atlas-") && k !== CACHE)
             .map((k) => caches.delete(k)),
         ),
       )

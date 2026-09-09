@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pal Lab",
-  "version": "1.10.1",
-  "identifier": "dev.pallab.app",
-  "mainBinaryName": "Pal Lab",
+  "productName": "Smitty's ATLAS",
+  "version": "0.1.0",
+  "identifier": "io.github.smitty1202.atlas",
+  "mainBinaryName": "ATLAS",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Pal Lab",
+        "title": "Smitty's ATLAS",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

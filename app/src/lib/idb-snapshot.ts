@@ -17,7 +17,7 @@
 // that Safari's ITP evicts IndexedDB after ~7 days without interaction, so a
 // snapshot is not durable there; it is a convenience, not a guarantee.
 //
-// Shares the one "pal-lab" DB (opened at the current version) with idb-handles via
+// Shares the one "atlas" DB (opened at the current version) with idb-handles via
 // ./idb, so both stores coexist. `factory` is injectable for the in-memory test
 // fake (bun has no `indexedDB` global); absent factory ⇒ no-op / null.
 

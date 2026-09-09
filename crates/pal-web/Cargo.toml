@@ -3,7 +3,7 @@ name = "pal-web"
 version = "0.1.0"
 edition.workspace = true
 license = "MIT"
-description = "wasm-bindgen bridge exposing the Pal Lab Tauri command surface to a browser Web Worker."
+description = "wasm-bindgen bridge exposing the ATLAS Tauri command surface to a browser Web Worker."
 
 [lib]
 crate-type = ["cdylib", "rlib"]

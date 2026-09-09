@@ -1,6 +1,6 @@
 # pal-web
 
-wasm-bindgen bridge that exposes the Pal Lab Tauri command surface to the
+wasm-bindgen bridge that exposes the ATLAS Tauri command surface to the
 browser build. The React/TS app runs the same `pal-*` crates compiled to wasm
 inside a Web Worker; this crate is the boundary the Worker talks to.
 

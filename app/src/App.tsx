@@ -836,7 +836,7 @@ function SftpConnectModal({
 
         <div className="border-t border-line px-5 py-3">
           <p className="text-[12px] leading-relaxed text-ink-faint">
-            Read-only - Pal Lab never writes to your server. Save changes are
+            Read-only - ATLAS never writes to your server. Save changes are
             picked up by polling every 60s.
           </p>
         </div>

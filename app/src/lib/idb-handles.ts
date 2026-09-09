@@ -6,7 +6,7 @@
 // renders the affordance (lib is consumed by components/web-drop-zone.tsx).
 //
 // No external deps: the shared ./idb module provides the promise-wrapped open
-// (opening the one "pal-lab" DB at the current version so the snapshot store can
+// (opening the one "atlas" DB at the current version so the snapshot store can
 // coexist) and the `wrap` helper. The `factory` parameter defaults to the ambient
 // `indexedDB` but is injectable so the unit test can pass an in-memory fake (bun
 // has no `indexedDB` global). When no factory exists (Firefox/Safari never persist

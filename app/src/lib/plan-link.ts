@@ -9,7 +9,7 @@
 // lets the SPA read + strip the code entirely client-side with no round-trip.
 //
 // WHY the origin is mode-dependent: on the web build we want the link to point at
-// whatever origin the user is on, so preview deploys (`*.pal-lab.pages.dev`)
+// whatever origin the user is on, so preview deploys (`*.atlas.pages.dev`)
 // produce self-referential links instead of always bouncing to production. But a
 // Tauri desktop user has no shareable URL of their own (the app runs from a
 // `tauri://` / custom-scheme origin no one else can open), so a desktop "Copy
@@ -20,7 +20,7 @@ import { isTauri } from "./caps";
 /** The public web app a desktop-generated link must point at (desktop has no
  *  shareable origin of its own). Kept as the deployed production host, not a
  *  preview alias. */
-const CANONICAL_ORIGIN = "https://pal-lab.pages.dev";
+const CANONICAL_ORIGIN = "https://atlas.pages.dev";
 
 /** The hash-fragment key carrying a shared plan code (`#plan=<code>`). */
 const PLAN_KEY = "plan";

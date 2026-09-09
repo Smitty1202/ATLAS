@@ -1,5 +1,5 @@
 // Captured-human display data. Humans (villagers, merchants, faction thugs,
-// bounty targets) are presentation-only in Pal Lab — they carry no species
+// bounty targets) are presentation-only in ATLAS — they carry no species
 // index or gender and are excluded from breeding/solving. This module resolves
 // a save's raw human CharacterID to a name, faction, portrait, work
 // suitabilities, and stats.

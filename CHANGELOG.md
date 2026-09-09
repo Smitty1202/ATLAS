@@ -1,6 +1,21 @@
 # Changelog
 
-Notable changes per release, newest first. Dates are ship dates.
+Notable changes per release, newest first. Dates are ship dates unless a
+version is marked Unreleased.
+
+## [0.1.0] - Unreleased
+
+### Changed
+- Project derived from Pal Lab v1.10.1
+  (`e21ec37f643e2ca913cbf2de4f5898bc5fef70d5`) as the ATLAS baseline.
+- Rebranded the current application as Smitty's ATLAS.
+- Established independent ATLAS versioning at 0.1.0.
+- Updated Tauri/package identity for ATLAS.
+- Migrated update checks to the public Smitty1202/ATLAS GitHub Releases
+  endpoint.
+
+The remaining entries below are inherited Pal Lab release history retained for
+historical accuracy and upstream attribution.
 
 ## [1.10.1] - 2026-08-04
 

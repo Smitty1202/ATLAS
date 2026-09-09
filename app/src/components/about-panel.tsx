@@ -1,7 +1,7 @@
 // About panel: app version, data-pack identity, a manual update check, and the
 // license note. Mounted from the sidebar footer via <AboutButton /> (which
-// renders the "Pal Lab · v{version}" chip as its own trigger and owns the
-// modal state), so App.tsx only needs the one import + usage.
+// renders the "ATLAS · v{version}" chip as its own trigger and owns the modal
+// state), so App.tsx only needs the one import + usage.
 //
 // The update check hits GitHub's releases/latest via the Rust `check_update`
 // command (see src-tauri/src/updater.rs); any failure degrades to a quiet
@@ -29,9 +29,11 @@ interface DataPackInfo {
 }
 
 /** Repository home, opened from the About footer's GitHub link. */
-const REPO_URL = "https://github.com/Wire15/pal-lab";
+const REPO_URL = "https://github.com/Smitty1202/ATLAS";
 /** Releases page, offered to web users who want the live-tracking desktop app. */
-const RELEASES_URL = "https://github.com/Wire15/pal-lab/releases";
+const RELEASES_URL = "https://github.com/Smitty1202/ATLAS/releases";
+/** Original upstream project retained for attribution only. */
+const UPSTREAM_URL = "https://github.com/Wire15/pal-lab";
 
 /** Open an external URL: the Tauri opener in the desktop app, a new tab in the
  *  browser builds (where the opener plugin isn't available). */
@@ -69,16 +71,16 @@ function useAppVersion(): string {
 export default function AboutButton() {
   const [open, setOpen] = useState(false);
   const version = useAppVersion();
-  const short = version ? `v${version.split(".").slice(0, 2).join(".")}` : "";
+  const versionLabel = version ? `v${version}` : "";
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        title="About Pal Lab"
+        title="About Smitty's ATLAS"
         className="mt-2.5 flex w-full items-center gap-2 rounded px-1 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint transition-colors hover:text-ink-dim"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-good" />
-        Pal Lab {short && <>&middot; {short}</>}
+        ATLAS {versionLabel && <>&middot; {versionLabel}</>}
       </button>
       {open && <AboutModal onClose={() => setOpen(false)} />}
     </>
@@ -152,7 +154,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             id="about-modal-title"
             className="mt-0.5 font-display text-lg font-bold tracking-wide text-ink"
           >
-            Pal Lab
+            Smitty&apos;s ATLAS
           </h2>
           <div className="mt-1 font-mono text-[12px] text-ink-dim">
             v{version || "\u2026"}
@@ -223,7 +225,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
               onClick={() => openExternal(REPO_URL)}
               className="font-mono text-[11px] text-ink-dim transition-colors hover:text-amber"
             >
-              github.com/Wire15/pal-lab
+              github.com/Smitty1202/ATLAS
             </button>
             <button
               onClick={onClose}
@@ -233,8 +235,18 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-            MITMIT licensed. Read-only &mdash; Pal Lab never modifies your
-            saves.
+            MIT licensed. Read-only &mdash; ATLAS never modifies your saves.
+          </p>
+          <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint/70">
+            Derived from{" "}
+            <button
+              onClick={() => openExternal(UPSTREAM_URL)}
+              className="text-ink-faint transition-colors hover:text-amber"
+            >
+              Pal Lab by Wire15
+            </button>{" "}
+            under the MIT License. Imported baseline: Pal Lab v1.10.1
+            (e21ec37f643e2ca913cbf2de4f5898bc5fef70d5).
           </p>
           <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint/70">
             Unofficial fan tool. Palworld is © Pocketpair, Inc. Not affiliated

@@ -1,4 +1,4 @@
-//! wasm-bindgen bridge exposing the Pal Lab Tauri command surface to a browser
+//! wasm-bindgen bridge exposing the ATLAS Tauri command surface to a browser
 //! Web Worker.
 //!
 //! The desktop app talks to a Rust backend through Tauri IPC; the browser build

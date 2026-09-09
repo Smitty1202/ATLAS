@@ -61,9 +61,9 @@ const MAX_ZOOM = 2;
 const SPAWN_DAY = "240,169,74"; // amber
 const SPAWN_NIGHT = "138,104,214"; // el-dark indigo
 
-const FILTERS_KEY = "pal-lab.mapFilters";
-const SHOW_HIDDEN_KEY = "pal-lab.mapShowHidden";
-const FOG_ON_KEY = "pal-lab.mapFogOn";
+const FILTERS_KEY = "atlas.mapFilters";
+const SHOW_HIDDEN_KEY = "atlas.mapShowHidden";
+const FOG_ON_KEY = "atlas.mapFogOn";
 
 const DEFAULT_FILTERS: LayerFilters = {
   fastTravel: true,

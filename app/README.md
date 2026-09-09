@@ -1,12 +1,12 @@
-# Pal Lab — app
+# Smitty's ATLAS - app
 
-The Pal Lab frontend: **React 19 + TypeScript (strict) + Tailwind v4**, bundled
-with **Vite**. It ships two ways from this one codebase:
+The Smitty's ATLAS frontend: **React 19 + TypeScript (strict) + Tailwind v4**,
+bundled with **Vite**. It ships two ways from this one codebase:
 
 - **Desktop** — a **Tauri v2** shell (`src-tauri/`) wrapping the same UI, with a
   live save watcher and native FS access.
 - **Web** — a WebAssembly build where the Rust solver/parser (`../crates/pal-web`)
-  runs client-side in a Web Worker, deployed to **pal-lab.pages.dev**.
+  runs client-side in a Web Worker, deployed to **atlas.pages.dev**.
 
 ## Dev commands
 

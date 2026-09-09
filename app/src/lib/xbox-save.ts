@@ -1,6 +1,6 @@
 // Desktop Xbox / Game Pass save source. A loaded Xbox world has no filesystem
 // folder path, so it is identified by a *sentinel* string stored in the same
-// slot as a folder path (localStorage `pal-lab.saveDir`, the recents list, and
+// slot as a folder path (localStorage `atlas.saveDir`, the recents list, and
 // `AppState.saveDir`). Everything that persists or invokes with a save path
 // treats the sentinel like any other string; the desktop Rust commands decode
 // it (see `crate::xbox::parse_sentinel`, which mirrors `decodeXboxSource`).

@@ -1,4 +1,4 @@
-// Runtime capability flags. Pal Lab ships in three backend modes that share one
+// Runtime capability flags. ATLAS ships in three backend modes that share one
 // frontend; every seam that differs by mode reads these flags instead of
 // re-sniffing the environment:
 //   - Tauri desktop — real `@tauri-apps/api` IPC (`__TAURI_INTERNALS__` present).

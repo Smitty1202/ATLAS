@@ -1,9 +1,10 @@
-# Pal Lab — agent context
+# Smitty's ATLAS - agent context
 
 Save-aware Palworld breeding solver + paldb.cc-style reference layer, successor to
 tylercamp/palcalc (MIT C#/WPF), rebuilt as a Rust core + React/TS UI. Ships as a
 Windows desktop app (Tauri) and a zero-install web app. MIT throughout.
-Published at https://github.com/Wire15/pal-lab, web at https://pal-lab.pages.dev.
+Current repo: https://github.com/Smitty1202/ATLAS; web target:
+https://atlas.pages.dev. Derived from Wire15/Pal Lab v1.10.1 under MIT.
 
 Read `README.md` (what it does) + `CHANGELOG.md` (shipped reality) first.
 `DESIGN.md` is a pre-v1.0 research snapshot — provenance, not current truth.
@@ -22,7 +23,7 @@ Read `README.md` (what it does) + `CHANGELOG.md` (shipped reality) first.
 ## Build / release
 - App: `cd app && bun install`, then `bun run dev` / `bun run tauri dev` / `bun run tauri build` (desktop), `bun run build:web` (wasm + web bundle). Rust tests: `cargo test`.
 - Desktop exes MUST be built via the Tauri CLI (`bun run tauri build`, CI=true) — plain `cargo build --release` on src-tauri yields a dev-flagged exe that loads localhost:1420 instead of embedded assets.
-- Releases: push a `vX.Y.Z` tag → GitHub Actions builds → draft release + VirusTotal scan → publish. Web auto-deploys to Cloudflare Pages from `master`.
+- Releases: push a `vX.Y.Z` tag -> GitHub Actions builds -> draft release + VirusTotal scan -> publish. Web deploys to Cloudflare Pages from `main`.
 - WGS test fixture: regenerate via `cargo run -p pal-save --bin make-wgs-fixture -- <save_dir> <out_wgs_user_dir>`.
 
 ## Invariants

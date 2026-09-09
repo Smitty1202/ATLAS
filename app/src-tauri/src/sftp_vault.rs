@@ -8,7 +8,7 @@
 //! flag); only the secret material crosses into the vault here.
 //!
 //! Vault key (pinned cross-slice contract):
-//!   - service: `"pal-lab.sftp"`
+//!   - service: `"atlas.sftp"`
 //!   - account: `"<host>:<port>:<user>"`
 //!   - value:   JSON `{"password": string|null, "key_passphrase": string|null}`
 //!
@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::sftp::SftpProfile;
 
-/// Keyring service name — the fixed namespace for every Pal Lab SFTP secret.
-const VAULT_SERVICE: &str = "pal-lab.sftp";
+/// Keyring service name — the fixed namespace for every ATLAS SFTP secret.
+const VAULT_SERVICE: &str = "atlas.sftp";
 
 /// The secret material persisted per endpoint. Serde shape matches the TS
 /// `SftpSecret` (and Rust `crate::sftp::SftpSecret`), so it doubles as both the
@@ -135,7 +135,7 @@ mod tests {
     fn real_vault_store_load_forget() {
         let mut p = profile();
         // Isolate from any real user secret by using a throwaway account.
-        p.user = "pal-lab-test-throwaway".into();
+        p.user = "atlas-test-throwaway".into();
 
         // Clean slate.
         sftp_secret_forget(p.clone()).unwrap();

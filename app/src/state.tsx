@@ -47,7 +47,7 @@ import { hexGuid } from "./components/palbox/selectors";
 export type View = "save" | "solver" | "paldex" | "ivlab" | "worldmap";
 
 /** localStorage key for the last successfully loaded save folder. */
-const SAVE_DIR_KEY = "pal-lab.saveDir";
+const SAVE_DIR_KEY = "atlas.saveDir";
 
 function readLastSaveDir(): string {
   try {
@@ -70,7 +70,7 @@ function friendlySaveError(raw: string): string {
 }
 
 /** localStorage key for the recent-saves profile list (contract #Profiles). */
-const RECENT_SAVES_KEY = "pal-lab.recentSaves";
+const RECENT_SAVES_KEY = "atlas.recentSaves";
 /** Max recent-save rows kept, most-recent first. */
 const MAX_RECENTS = 8;
 
@@ -119,7 +119,7 @@ function readRecentSaves(): RecentSave[] {
  * `canonDir -> scope` (a lowercase 32-char player uid hex, or `"all"`), so each
  * world remembers who you play it as. Keyed by the same {@link canonDir} canon
  * as the recent-saves list. */
-const PLAYER_SCOPE_KEY = "pal-lab.playerScope";
+const PLAYER_SCOPE_KEY = "atlas.playerScope";
 
 /** The persisted `canonDir -> scope` map (empty on any parse failure). */
 function readPlayerScopes(): Record<string, string> {
@@ -153,13 +153,13 @@ function writeScopeForDir(dir: string, scope: string): void {
  * The composed farm/incubation/egg fractions + world egg-hatch hours, and the
  * selected cake, survive reloads and view switches so the Solver and IV Lab
  * share one setup. */
-const BREEDING_SETUP_KEY = "pal-lab.breedingSetup";
-const CAKE_KEY = "pal-lab.cake";
+const BREEDING_SETUP_KEY = "atlas.breedingSetup";
+const CAKE_KEY = "atlas.cake";
 /** Advanced-station toggles (surgery table / gender reverser / skill fruits).
  * Each key holds the option object while ON, or is absent while OFF. */
-const SURGERY_KEY = "pal-lab.surgery";
-const GENDER_REVERSER_KEY = "pal-lab.genderReverser";
-const SKILL_FRUIT_KEY = "pal-lab.skillFruit";
+const SURGERY_KEY = "atlas.surgery";
+const GENDER_REVERSER_KEY = "atlas.genderReverser";
+const SKILL_FRUIT_KEY = "atlas.skillFruit";
 
 /** Neutral vanilla farm setup: no boosts, vanilla 72h hatch. */
 const DEFAULT_SETUP: BreedingSetup = {
