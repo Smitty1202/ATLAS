@@ -1,0 +1,104 @@
+Vendored game-data files
+=========================
+
+The following files in this directory are vendored, unmodified, from the
+palcalc project:
+
+  db.json        - pal species, passives, active skills, elements, gender probabilities
+  breeding.json  - full breeding table + minimum-breeding-steps matrix
+  attacks.csv    - per-move (waza) metadata; pal-calc consumes only the
+                   CanInherit + HasSkillFruit columns (breeding-inheritance
+                   flags). CanInherit is palcalc's negation of the game's
+                   IgnoreRandomInherit field on DT_WazaDataTable; HasSkillFruit
+                   is true iff a Skill Fruit item teaches the move. From
+                   PalCalc.GenDB/out-csv/attacks.csv.
+
+Source:  https://github.com/tylercamp/palcalc  (PalCalc.Model/, PalCalc.GenDB/out-csv/)
+Author:  Tyler Camp and palcalc contributors
+License: MIT
+
+palcalc is distributed under the MIT License. These data files are included
+here under that license as a day-one data contract; pal-calc converts them to
+a compact binary pack (pack/paldata.pack) at build time and credits the
+original authors. See the palcalc repository for the full license text.
+
+Own-install extraction (Palworld build 24181527)
+================================================
+
+  extracted-game-data.json - per-species { elements, partner_skill {name,
+                  description}, stats } plus top-level game_settings
+                  (Combi_* inheritance arrays + Combi_BossPalRate) and meta.
+
+This file was extracted directly from a legitimately-owned Palworld 1.0 install
+(build 24181527) using the tools/pal-extract utility (CUE4Parse + PalworldModding
+usmap). It is the AUTHORITATIVE source for:
+
+  - element types (replaces the former vendored elements.json, now removed);
+  - partner-skill NAMES (populated for every species);
+  - partner-skill DESCRIPTIONS (real in-game text from
+    DT_PalFirstActivatedInfoText; populated for every species — replaces the
+    former vendored partner-skills.json, now removed);
+  - partner-skill ICONS (numeric TextureID keys -> app/public/partner/<id>.png);
+  - passive-skill effects, authored descriptions, and lottery/pal-facing flags
+    (additive display metadata joined by internal name onto db.json's passives);
+  - extended stats (price, craft/slow-walk/walk/run/ride-sprint/transport
+    speeds, stamina, max-full-stomach, size).
+
+Note: DT_PalFirstActivatedInfoText descriptions retain the game's own
+{PassiveN_EffectValueN}/{ReferenceMsgId_*}/{ActiveSkill*} runtime templates,
+which the game substitutes per partner-skill level at display time.
+
+These facts are game data from Palworld (c) Pocketpair, Inc., extracted from a
+personal copy and included here for personal, non-commercial use only. All
+rights to the underlying data remain with Pocketpair.
+
+Icon assets
+===========
+
+The pal icons in app/public/pals/ and the element / passive-rank icons in
+app/public/elements/ are sourced, unmodified, from palcalc's bundled art
+(PalCalc.UI/Resources/Pals, .../Elements, .../TraitRank). pal-calc renames
+each pal icon from palcalc's display-name key to the internal species id
+(e.g. "Lamball.png" -> "SheepBall.png") but does not alter the image bytes.
+
+The work-suitability icons in app/public/work/ (12 kinds: Kindling, Watering,
+Planting, GenerateElectricity, Handiwork, Gathering, Lumbering, Mining,
+MedicineProduction, Cooling, Transporting, Farming) are sourced, unmodified,
+from palcalc's bundled art (PalCalc.UI/Resources/). The GenerateElectricity
+glyph is palcalc's "ElectricityGeneration.png" renamed to match the
+WorkSuitability key; the other eleven keep their palcalc filenames.
+
+Source:  https://github.com/tylercamp/palcalc  (PalCalc.UI/Resources/)
+Author:  Tyler Camp and palcalc contributors
+License: MIT (for palcalc's redistribution)
+
+These images are ultimately game assets from Palworld (c) Pocketpair, Inc.
+They are included here for personal, non-commercial use only. All rights to
+the underlying artwork remain with Pocketpair.
+
+Per-species partner skills
+==========================
+
+partner-skills.json (formerly the description source; mlg404/palworld-paldex-api
+`aura` text, 169/299 coverage) has been REMOVED. Partner-skill names AND
+descriptions now both come from the own-install extraction
+(extracted-game-data.json, documented above): descriptions are the real in-game
+DT_PalFirstActivatedInfoText text at 299/299 coverage, so the derived paldex-api
+mapping is no longer needed.
+
+Alpha / UI marker icon
+======================
+
+The alpha (field-boss) marker in app/public/ui/alpha.png — the red horned icon
+shown on alpha pals — is sourced, unmodified in artwork, from palworld-save-pal's
+bundled art (ui/src/lib/assets/img/alpha.webp, itself the game's
+T_alpha_icon_normal). It was transcoded from WEBP to PNG (pixels unchanged; a
+lossless container change only).
+
+Source:  https://github.com/oMaN-Rod/palworld-save-pal  (ui/src/lib/assets/img/alpha.webp)
+Author:  oMaN-Rod and Palworld Save Pal contributors
+License: MIT
+
+This image is ultimately a game asset from Palworld (c) Pocketpair, Inc.,
+included here for personal, non-commercial use only. All rights to the
+underlying artwork remain with Pocketpair.

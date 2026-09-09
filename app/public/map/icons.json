@@ -1,0 +1,227 @@
+{
+  "alpha_badge": {
+    "file": "alpha_badge.png",
+    "px": [
+      64,
+      64
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/Map/T_prt_map_BossIconFrame",
+    "mono": true
+  },
+  "base": {
+    "file": "base.png",
+    "px": [
+      100,
+      100
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_camp",
+    "mono": false
+  },
+  "bounty": {
+    "file": "bounty.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_Bounty",
+    "mono": false
+  },
+  "dungeon": {
+    "file": "dungeon.png",
+    "px": [
+      64,
+      64
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_dungeon",
+    "mono": false
+  },
+  "effigy": {
+    "file": "effigy.png",
+    "px": [
+      256,
+      256
+    ],
+    "source": "Pal/Content/Others/InventoryItemIcon/Texture/T_itemicon_Relic",
+    "mono": false
+  },
+  "fast_travel": {
+    "file": "fast_travel.png",
+    "px": [
+      100,
+      100
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_FTtower",
+    "mono": false
+  },
+  "marker_0": {
+    "file": "marker_0.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_00",
+    "mono": false
+  },
+  "marker_1": {
+    "file": "marker_1.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_01",
+    "mono": false
+  },
+  "marker_10": {
+    "file": "marker_10.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_10",
+    "mono": false
+  },
+  "marker_11": {
+    "file": "marker_11.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_11",
+    "mono": false
+  },
+  "marker_12": {
+    "file": "marker_12.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_12",
+    "mono": false
+  },
+  "marker_13": {
+    "file": "marker_13.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_13",
+    "mono": false
+  },
+  "marker_14": {
+    "file": "marker_14.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_14",
+    "mono": false
+  },
+  "marker_15": {
+    "file": "marker_15.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_15",
+    "mono": false
+  },
+  "marker_16": {
+    "file": "marker_16.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_16",
+    "mono": false
+  },
+  "marker_2": {
+    "file": "marker_2.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_02",
+    "mono": false
+  },
+  "marker_3": {
+    "file": "marker_3.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_03",
+    "mono": false
+  },
+  "marker_4": {
+    "file": "marker_4.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_04",
+    "mono": false
+  },
+  "marker_5": {
+    "file": "marker_5.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_05",
+    "mono": false
+  },
+  "marker_6": {
+    "file": "marker_6.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_06",
+    "mono": false
+  },
+  "marker_7": {
+    "file": "marker_7.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_07",
+    "mono": false
+  },
+  "marker_8": {
+    "file": "marker_8.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_08",
+    "mono": false
+  },
+  "marker_9": {
+    "file": "marker_9.png",
+    "px": [
+      80,
+      80
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_09",
+    "mono": false
+  },
+  "tower": {
+    "file": "tower.png",
+    "px": [
+      100,
+      100
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/InGame/T_icon_compass_tower",
+    "mono": false
+  },
+  "unknown": {
+    "file": "unknown.png",
+    "px": [
+      64,
+      64
+    ],
+    "source": "Pal/Content/Pal/Texture/UI/Map/T_icon_compass_Boss_Unknown",
+    "mono": false
+  }
+}

@@ -1,0 +1,25 @@
+# Rust
+target/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Personal save data — never commit
+testdata/
+
+# Local game data / extracts (large, machine-specific)
+data/extracted/
+*.usmap
+
+# pal-extract dev tool (build output + generated extracts; run locally against your own install)
+tools/pal-extract/bin/
+tools/pal-extract/obj/
+tools/pal-extract/out/
+tools/pal-extract/*.dll
+
+# OS
+Thumbs.db
+.DS_Store
+/outreach/

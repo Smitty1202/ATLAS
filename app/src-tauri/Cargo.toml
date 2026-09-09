@@ -1,0 +1,58 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Shared vocabulary + the real save reader.
+pal-data = { path = "../../crates/pal-data" }
+pal-save = { path = "../../crates/pal-save" }
+pal-solver = { path = "../../crates/pal-solver" }
+# Filesystem watcher for live save auto-reload (watch_save/unwatch_save).
+notify = "6"
+# Non-poisoning Mutex for the watcher handle (rs-parking-lot rule).
+parking_lot = "0.12"
+# Grayscale-PNG encode + base64 for the map fog layers (get_map_state).
+png = "0.17"
+base64 = "0.22"
+# Blocking HTTP client for the once-per-launch update check (updater.rs).
+# Default features pull rustls (NOT native-tls/openssl) + gzip, keeping the
+# Windows build free of a system OpenSSL requirement.
+ureq = "2"
+# Pure-Rust SSH/SFTP (dedicated-server save loading, sftp.rs). The `ring` crypto
+# backend (default-features off to drop `aws-lc-rs`) ships pregenerated MSVC
+# objects, so the Windows build needs NO NASM/OpenSSL/native deps. russh-keys was
+# merged into russh (`russh::keys`), so no separate keys crate. russh-sftp is
+# transport-agnostic and rides the russh channel stream.
+russh = { version = "0.62", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "2.4"
+# Direct tokio handle for the async SFTP session (Mutex, timeout, poll sleep) and
+# the #[tokio::test] scan tests. The Tauri async runtime IS tokio.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "sync", "io-util", "net"] }
+# OS credential vault for opt-in remembered SFTP secrets (sftp_vault.rs). keyring
+# 3.x ships NO default credential store (its default feature set is empty and
+# falls back to an in-memory mock), so the Windows Credential Manager backend
+# MUST be opted into explicitly via `windows-native` — otherwise stored secrets
+# would silently not persist. Secrets NEVER touch a file or localStorage.
+keyring = { version = "3", features = ["windows-native"] }
+
