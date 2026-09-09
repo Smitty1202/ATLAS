@@ -23,6 +23,13 @@ bun run build:web      # build:wasm, then tsc + vite build for the web target
 cargo test             # Rust workspace tests (solver/parser/data), from repo root
 ```
 
+## Desktop Packaging
+
+The visible app branding remains `Smitty's ATLAS`, including the Tauri window
+title. Tauri `productName` intentionally uses `ATLAS`: the apostrophe in
+`Smitty's ATLAS` breaks Tauri's generated Windows NSIS `IsShortcutTarget` macro,
+while `ATLAS` allows NSIS packaging to succeed.
+
 ## Design contract
 
 The visual + interaction contract is binding: see the repo root
