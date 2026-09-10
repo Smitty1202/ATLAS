@@ -1,13 +1,18 @@
 // The map filter popover (the in-game "Filter" equivalent): one row per overlay
-// layer with a toggle and a live count, plus the "show hidden" spoiler override.
-// MapView owns the filter state (persisted to localStorage); this is the
-// presentation. Anchored under the header "Filter" button.
+// layer with a toggle and a live count, plus effigy-family filtering and the
+// "show hidden" spoiler override. MapView owns the main layer state; effigy type
+// selection is a small shared persisted map preference.
 
+import { useEffect, useState } from "react";
 import type { LayerFilters } from "./PinLayer";
 import type { PoiCounts } from "./pins";
+import {
+  EFFIGY_TYPES_EVENT,
+  readEffigyTypeSelection,
+  writeEffigyTypeSelection,
+  type EffigyTypeSelection,
+} from "./effigy-filter";
 
-/** A layer toggle row: a checkbox-style switch, label, and a right-aligned
- *  count chip. `dimCount` styles the count as approximate (no per-pin join). */
 function Row({
   on,
   onToggle,
@@ -87,10 +92,46 @@ export default function FilterPanel({
   const ft = counts.fastTravel;
   const ef = counts.effigies;
   const tw = counts.towers;
+  const effigyTypes = counts.effigyTypes ?? [];
   const hideUnfound = filters.hideUnfoundEffigies;
   const effigyCount = hideUnfound ? `${ef.found} found` : `${ef.found}/${ef.total}`;
+  const [effigySelection, setEffigySelection] = useState<EffigyTypeSelection>(
+    readEffigyTypeSelection,
+  );
+
+  useEffect(() => {
+    const sync = () => setEffigySelection(readEffigyTypeSelection());
+    window.addEventListener(EFFIGY_TYPES_EVENT, sync);
+    return () => window.removeEventListener(EFFIGY_TYPES_EVENT, sync);
+  }, []);
+
+  const allEffigyKeys = effigyTypes.map((t) => t.key);
+  const selectedCount =
+    effigySelection === null
+      ? allEffigyKeys.length
+      : allEffigyKeys.filter((key) => effigySelection.includes(key)).length;
+
+  const applyEffigySelection = (next: EffigyTypeSelection) => {
+    setEffigySelection(next);
+    writeEffigyTypeSelection(next);
+  };
+
+  const toggleEffigyType = (key: string) => {
+    if (effigySelection === null) {
+      applyEffigySelection(allEffigyKeys.filter((candidate) => candidate !== key));
+      return;
+    }
+    const next = new Set(effigySelection);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    const normalized = allEffigyKeys.filter((candidate) => next.has(candidate));
+    applyEffigySelection(
+      normalized.length === allEffigyKeys.length ? null : normalized,
+    );
+  };
+
   return (
-    <div className="absolute right-0 top-full z-20 mt-2 w-60 rounded-md border border-line bg-panel/95 p-1.5 shadow-lg backdrop-blur">
+    <div className="absolute right-0 top-full z-20 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-line bg-panel/95 p-1.5 shadow-lg backdrop-blur">
       <div className="px-2 pb-1 pt-1 font-mono text-[10px] uppercase tracking-[0.22em] text-ink-faint">
         Layers
       </div>
@@ -146,9 +187,64 @@ export default function FilterPanel({
               Hide unfound
             </span>
           </button>
-          <p className="px-2 pb-0.5 font-mono text-[9px] leading-relaxed tracking-wide text-ink-faint">
+          <p className="px-2 pb-1 font-mono text-[9px] leading-relaxed tracking-wide text-ink-faint">
             Spoiler-safe — hides effigies you haven't collected yet.
           </p>
+
+          {effigyTypes.length > 0 && (
+            <div className="border-t border-line-soft pt-1">
+              <div className="flex items-center gap-2 px-2 py-1">
+                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+                  Types {selectedCount}/{allEffigyKeys.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => applyEffigySelection(null)}
+                  className="font-mono text-[9px] uppercase tracking-wider text-amber hover:text-amber-bright"
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyEffigySelection([])}
+                  className="font-mono text-[9px] uppercase tracking-wider text-ink-faint hover:text-ink"
+                >
+                  None
+                </button>
+              </div>
+              {effigyTypes.map((type) => {
+                const on = effigySelection === null || effigySelection.includes(type.key);
+                return (
+                  <button
+                    key={type.key}
+                    type="button"
+                    onClick={() => toggleEffigyType(type.key)}
+                    role="switch"
+                    aria-checked={on}
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover"
+                  >
+                    <span
+                      className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
+                        on ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
+                      }`}
+                    >
+                      {on && (
+                        <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className={`flex-1 font-mono text-[10px] tracking-wide ${on ? "text-ink" : "text-ink-faint"}`}>
+                      {type.label}
+                    </span>
+                    <span className="font-mono text-[9px] tabular-nums text-ink-faint">
+                      {hideUnfound ? `${type.found}` : `${type.found}/${type.total}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
       {hasBounties && (
