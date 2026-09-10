@@ -20,8 +20,6 @@ namespace PalExtract;
 
 static class Program
 {
-    // Known build of the installed Palworld (per project constraints / build 24181527).
-    const string GameBuild = "24181527";
     const string UsmapSource = "PalworldModding/UsefulFiles@1.0";
 
     static readonly string PaksDir = Environment.GetEnvironmentVariable("PALCALC_PALWORLD_PAKS")
@@ -29,6 +27,9 @@ static class Program
     static readonly string UsmapPath = Environment.GetEnvironmentVariable("PALCALC_MAPPINGS_USMAP")
         ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Mappings.usmap");
     static readonly string OutDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "out"));
+    static readonly (string build, string source) GameBuildInfo = ResolveGameBuildInfo(PaksDir);
+    static readonly string GameBuild = GameBuildInfo.build;
+    static readonly string GameBuildSource = GameBuildInfo.source;
 
     // T_Icon_element sprite index -> element kind (canonical order, cf. palcalc BuildDBProgram.ExportElementIcons)
     static readonly string[] IconKinds = { "Normal", "Fire", "Water", "Electricity", "Leaf", "Dark", "Dragon", "Earth", "Ice" };
@@ -61,6 +62,7 @@ static class Program
         if (args.Contains("--export-map")) return ExportMap(provider);
         if (args.Contains("--discover-map-icons")) { DiscoverMapIcons(provider); return 0; }
         if (args.Contains("--discover-map-guids")) { DiscoverMapGuids(provider); return 0; }
+        if (args.Contains("--discover-effigies")) { DiscoverEffigies(provider, args.Contains("--all-maps")); return 0; }
         if (args.Contains("--discover-tower")) { DiscoverTower(provider); return 0; }
         if (args.Contains("--discover-incident")) { DiscoverIncident(provider); return 0; }
         if (args.Contains("--discover-bounty-actors")) { DiscoverBountyActors(provider); return 0; }
@@ -771,6 +773,593 @@ static class Program
         public string Image;
         public bool Contains(double x, double y) => x >= Xmin && x <= Xmax && y >= Ymin && y <= Ymax;
     }
+
+    sealed class EffigyPropertyEvidence
+    {
+        public string Path;
+        public string Value;
+    }
+
+    sealed class EffigyCandidate
+    {
+        public string ClassName;
+        public string ClassFamily;
+        public string ActorName;
+        public string PackagePath;
+        public string MapSource;
+        public string World;
+        public double? X, Y, Z;
+        public string Guid;
+        public string TypeName;
+        public string TypeSource;
+        public List<EffigyPropertyEvidence> TypeProperties = new();
+        public List<EffigyPropertyEvidence> RelicReferences = new();
+        public List<string> Evidence = new();
+    }
+
+    sealed class EffigyClassMetadata
+    {
+        public string ClassName;
+        public string ClassFamily;
+        public List<string> AssetPaths = new();
+        public List<string> ExportTypes = new();
+        public string TypeName;
+        public string TypeSource;
+        public List<EffigyPropertyEvidence> TypeProperties = new();
+        public List<EffigyPropertyEvidence> RelicReferences = new();
+    }
+
+    // ---- EFFIGY DISCOVERY (`--discover-effigies`) -----------------------------------------------
+    // Broad, read-only sweep over current map packages. It does not feed the live app map; it reports
+    // placed actors with class/property evidence that they are relic/effigy level objects, and records
+    // type only when the game data exposes EPalRelicType directly (or a class token matches that enum).
+    static void DiscoverEffigies(IFileProvider provider, bool allMaps)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var probeDir = Path.GetFullPath(Path.Combine(OutDir, "..", "..", "..", "testdata", "probe"));
+        Directory.CreateDirectory(probeDir);
+
+        var layers = LoadMapLayers(provider);
+        layers.TryGetValue("MainMap", out var main);
+        layers.TryGetValue("Tree", out var tree);
+        var relicTypes = LoadRelicTypes(provider);
+        Console.WriteLine($"[effigy-discover] game_build={GameBuild} ({GameBuildSource}); relicTypeEnumValues={relicTypes.Count}");
+
+        var mapCells = provider.Files.Values
+            .Where(f => f.Path.EndsWith(".umap", StringComparison.OrdinalIgnoreCase)
+                && f.Path.Contains("Pal/Content/Pal/Maps/", StringComparison.OrdinalIgnoreCase)
+                && (allMaps || IsRelevantWorldMapPackage(f.Path)))
+            .OrderBy(f => f.Path, StringComparer.Ordinal)
+            .ToList();
+        Console.WriteLine($"[effigy-discover] scanning {mapCells.Count} map packages (scope={(allMaps ? "all Pal/Maps .umap" : "world maps")})");
+
+        var candidates = new List<EffigyCandidate>();
+        int cellsSeen = 0, packagesLoaded = 0, actorExports = 0, levelObjectActorsScanned = 0;
+        foreach (var gf in mapCells)
+        {
+            cellsSeen++;
+            if (cellsSeen % 250 == 0)
+                Console.WriteLine($"[effigy-discover] progress packages={cellsSeen}/{mapCells.Count} candidates={candidates.Count} elapsed={sw.Elapsed.TotalSeconds:F0}s");
+            if (!provider.TryLoadPackage(gf, out var pkg)) continue;
+            packagesLoaded++;
+            for (int i = 0; i < pkg.ExportMapLength; i++)
+            {
+                var ptr = new FPackageIndex(pkg, i + 1).ResolvedObject;
+                var cls = ptr?.Class?.Name.Text;
+                if (cls == null) continue;
+                actorExports++;
+                var actor = ptr.Object?.Value;
+                if (actor == null) continue;
+
+                bool hasLevelObjectInstanceId = actor.Properties.Any(p => p.Name.Text == "LevelObjectInstanceId");
+                var classTypeHint = RelicTypeFromClassName(cls, relicTypes);
+                bool classHint = Regex.IsMatch(cls, "(Relic|Effigy)", RegexOptions.IgnoreCase) || classTypeHint != null;
+                var classFamily = RelicClassFamily(cls);
+                bool levelObjectLike = hasLevelObjectInstanceId
+                    || cls.Contains("LevelObject", StringComparison.OrdinalIgnoreCase)
+                    || classHint;
+                if (!levelObjectLike) continue;
+                levelObjectActorsScanned++;
+
+                var typeProps = new List<EffigyPropertyEvidence>();
+                var relicRefs = new List<EffigyPropertyEvidence>();
+                CollectEffigyEvidence(actor.Properties, "", typeProps, relicRefs, relicTypes);
+                if (!classHint && typeProps.Count == 0 && relicRefs.Count == 0) continue;
+
+                var loc = ActorLocation(actor);
+                var iid = actor.GetOrDefault<FGuid>("LevelObjectInstanceId");
+                string guid = (iid.A | iid.B | iid.C | iid.D) != 0 ? UeDigits(iid) : null;
+                string typeName = RelicTypeFromEvidence(typeProps, relicTypes);
+                string typeSource = null;
+                if (typeName != null)
+                    typeSource = typeProps.FirstOrDefault(h => RelicTypeFromText(h.Value, relicTypes) == typeName)?.Path ?? "property";
+                else if (classTypeHint != null)
+                {
+                    typeName = classTypeHint;
+                    typeSource = "class";
+                }
+
+                var evidence = new List<string>();
+                if (classHint) AddEvidence(evidence, classTypeHint != null ? "class matches EPalRelicType enum token" : "class name contains Relic/Effigy");
+                if (classFamily != null) AddEvidence(evidence, "class name carries relic family suffix");
+                if (hasLevelObjectInstanceId) AddEvidence(evidence, "actor has LevelObjectInstanceId");
+                if (typeProps.Count > 0) AddEvidence(evidence, "actor property exposes EPalRelicType/relic type");
+                if (relicRefs.Count > 0) AddEvidence(evidence, "actor property references Relic/Effigy");
+
+                candidates.Add(new EffigyCandidate
+                {
+                    ClassName = cls,
+                    ClassFamily = classFamily,
+                    ActorName = actor.Name,
+                    PackagePath = gf.Path,
+                    MapSource = MapSourceOf(gf.Path),
+                    World = WorldOf(gf.Path, loc, main, tree),
+                    X = loc?.X,
+                    Y = loc?.Y,
+                    Z = loc?.Z,
+                    Guid = guid,
+                    TypeName = typeName,
+                    TypeSource = typeSource,
+                    TypeProperties = typeProps
+                        .OrderBy(h => h.Path, StringComparer.Ordinal)
+                        .ThenBy(h => h.Value, StringComparer.Ordinal)
+                        .ToList(),
+                    RelicReferences = relicRefs
+                        .OrderBy(h => h.Path, StringComparer.Ordinal)
+                        .ThenBy(h => h.Value, StringComparer.Ordinal)
+                        .Take(24)
+                        .ToList(),
+                    Evidence = evidence.OrderBy(x => x, StringComparer.Ordinal).ToList(),
+                });
+            }
+        }
+
+        var ordered = candidates
+            .OrderBy(c => c.ClassName, StringComparer.Ordinal)
+            .ThenBy(c => c.TypeName ?? "", StringComparer.Ordinal)
+            .ThenBy(c => c.World, StringComparer.Ordinal)
+            .ThenBy(c => c.X ?? double.MinValue)
+            .ThenBy(c => c.Y ?? double.MinValue)
+            .ThenBy(c => c.Guid ?? "", StringComparer.Ordinal)
+            .ThenBy(c => c.PackagePath, StringComparer.Ordinal)
+            .ToList();
+
+        var classMetadata = LoadEffigyClassMetadata(provider, ordered.Select(c => c.ClassName).Distinct(StringComparer.Ordinal), relicTypes);
+        foreach (var c in ordered.Where(c => c.TypeName == null))
+        {
+            if (!classMetadata.TryGetValue(c.ClassName, out var meta) || meta.TypeName == null) continue;
+            c.TypeName = meta.TypeName;
+            c.TypeSource = meta.TypeSource;
+            AddEvidence(c.Evidence, "class CDO exposes EPalRelicType/relic type");
+        }
+        ordered = ordered
+            .OrderBy(c => c.ClassName, StringComparer.Ordinal)
+            .ThenBy(c => c.TypeName ?? "", StringComparer.Ordinal)
+            .ThenBy(c => c.World, StringComparer.Ordinal)
+            .ThenBy(c => c.X ?? double.MinValue)
+            .ThenBy(c => c.Y ?? double.MinValue)
+            .ThenBy(c => c.Guid ?? "", StringComparer.Ordinal)
+            .ThenBy(c => c.PackagePath, StringComparer.Ordinal)
+            .ToList();
+
+        var guidGroups = ordered
+            .Where(c => c.Guid != null)
+            .GroupBy(c => c.Guid, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var duplicateGuidGroups = guidGroups
+            .Where(g => g.Count() > 1)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => new
+            {
+                guid = g.Key,
+                count = g.Count(),
+                actors = g.Select(c => new { @class = c.ClassName, package = c.PackagePath, world = c.World, x = Round(c.X), y = Round(c.Y), z = Round(c.Z) }).ToList(),
+            })
+            .ToList();
+        var locationGroups = ordered
+            .Where(c => c.X != null && c.Y != null && c.Z != null)
+            .GroupBy(c => $"{Math.Round(c.X.Value * 10):F0}:{Math.Round(c.Y.Value * 10):F0}:{Math.Round(c.Z.Value * 10):F0}", StringComparer.Ordinal)
+            .ToList();
+        var duplicateLocationGroups = locationGroups
+            .Where(g => g.Count() > 1)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => new
+            {
+                location_key = g.Key,
+                count = g.Count(),
+                actors = g.Select(c => new { @class = c.ClassName, guid = c.Guid, package = c.PackagePath, world = c.World, x = Round(c.X), y = Round(c.Y), z = Round(c.Z) }).ToList(),
+            })
+            .ToList();
+
+        int legacyCount = ordered.Count(c => c.ClassName == "BP_LevelObject_Relic_C");
+        int missingGuid = ordered.Count(c => c.Guid == null);
+        int unknownType = ordered.Count(c => c.TypeName == null);
+        int mainCount = ordered.Count(c => c.World == "MainMap");
+        int treeCount = ordered.Count(c => c.World == "Tree");
+        int unknownWorld = ordered.Count(c => c.World == "unknown");
+        int duplicateGuidActorCount = duplicateGuidGroups.Sum(g => g.count);
+        int duplicateLocationActorCount = duplicateLocationGroups.Sum(g => g.count);
+
+        var report = new
+        {
+            game_build = GameBuild,
+            game_build_source = GameBuildSource,
+            extracted_at = DateTimeOffset.UtcNow.ToString("o"),
+            usmap = UsmapSource,
+            paks_dir = PaksDir,
+            map_scope = allMaps ? "all Pal/Maps .umap" : "world maps",
+            map_package_count = mapCells.Count,
+            packages_loaded = packagesLoaded,
+            actor_exports_seen = actorExports,
+            level_object_like_actors_scanned = levelObjectActorsScanned,
+            relic_type_enum_values = relicTypes.OrderBy(x => x, StringComparer.Ordinal).ToList(),
+            total = ordered.Count,
+            total_unique_guids = guidGroups.Count,
+            missing_guid_count = missingGuid,
+            duplicate_guid_group_count = duplicateGuidGroups.Count,
+            duplicate_guid_actor_count = duplicateGuidActorCount,
+            duplicate_location_group_count = duplicateLocationGroups.Count,
+            duplicate_location_actor_count = duplicateLocationActorCount,
+            unknown_type_count = unknownType,
+            legacy_bp_levelobject_relic_c_count = legacyCount,
+            newer_or_nonlegacy_candidate_count = ordered.Count - legacyCount,
+            worlds = new[]
+            {
+                new { world = "MainMap", count = mainCount },
+                new { world = "Tree", count = treeCount },
+                new { world = "unknown", count = unknownWorld },
+            },
+            classes = ordered
+                .GroupBy(c => c.ClassName, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { @class = g.Key, count = g.Count() })
+                .ToList(),
+            types = ordered
+                .Where(c => c.TypeName != null)
+                .GroupBy(c => c.TypeName, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { type = g.Key, count = g.Count() })
+                .ToList(),
+            class_families = ordered
+                .Where(c => c.ClassFamily != null)
+                .GroupBy(c => c.ClassFamily, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { family = g.Key, count = g.Count() })
+                .ToList(),
+            class_metadata = classMetadata.Values
+                .OrderBy(m => m.ClassName, StringComparer.Ordinal)
+                .Select(m => new
+                {
+                    @class = m.ClassName,
+                    class_family = m.ClassFamily,
+                    asset_paths = m.AssetPaths,
+                    export_types = m.ExportTypes,
+                    type = m.TypeName,
+                    type_source = m.TypeSource,
+                    type_properties = m.TypeProperties.Select(h => new { path = h.Path, value = h.Value }).ToList(),
+                    relic_references = m.RelicReferences.Select(h => new { path = h.Path, value = h.Value }).ToList(),
+                })
+                .ToList(),
+            duplicate_guids = duplicateGuidGroups,
+            duplicate_locations = duplicateLocationGroups,
+            effigies = ordered.Select(c => new
+            {
+                @class = c.ClassName,
+                class_family = c.ClassFamily,
+                type = c.TypeName,
+                type_source = c.TypeSource,
+                guid = c.Guid,
+                world = c.World,
+                map_source = c.MapSource,
+                package = c.PackagePath,
+                actor = c.ActorName,
+                x = Round(c.X),
+                y = Round(c.Y),
+                z = Round(c.Z),
+                evidence = c.Evidence,
+                type_properties = c.TypeProperties.Select(h => new { path = h.Path, value = h.Value }).ToList(),
+                relic_references = c.RelicReferences.Select(h => new { path = h.Path, value = h.Value }).ToList(),
+            }).ToList(),
+        };
+
+        var outPath = Path.Combine(probeDir, "effigies.json");
+        File.WriteAllText(outPath, JsonConvert.SerializeObject(report, Formatting.Indented));
+
+        Console.WriteLine($"[effigy-discover] mapPackages={mapCells.Count} loaded={packagesLoaded} actors={actorExports} levelObjectLike={levelObjectActorsScanned}");
+        Console.WriteLine($"[effigy-discover] total={ordered.Count} uniqueGuids={guidGroups.Count} classes={ordered.Select(c => c.ClassName).Distinct(StringComparer.Ordinal).Count()} types={ordered.Where(c => c.TypeName != null).Select(c => c.TypeName).Distinct(StringComparer.Ordinal).Count()}");
+        Console.WriteLine($"[effigy-discover] worlds MainMap={mainCount} Tree={treeCount} unknown={unknownWorld}; missingGuid={missingGuid} duplicateGuidGroups={duplicateGuidGroups.Count} unknownType={unknownType} duplicateLocationGroups={duplicateLocationGroups.Count}");
+        Console.WriteLine($"[effigy-discover] legacy BP_LevelObject_Relic_C={legacyCount}; newer/nonlegacy={ordered.Count - legacyCount}");
+        foreach (var g in ordered.GroupBy(c => c.ClassName, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
+            Console.WriteLine($"    class {g.Key} = {g.Count()}");
+        foreach (var g in ordered.Where(c => c.TypeName != null).GroupBy(c => c.TypeName, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
+            Console.WriteLine($"    type {g.Key} = {g.Count()}");
+        var repoRoot = Path.GetFullPath(Path.Combine(OutDir, "..", "..", ".."));
+        Console.WriteLine($"[effigy-discover] wrote {Path.GetRelativePath(repoRoot, outPath)} ({sw.Elapsed.TotalSeconds:F0}s)");
+    }
+
+    static bool IsRelevantWorldMapPackage(string path)
+    {
+        var p = path?.Replace('\\', '/') ?? "";
+        return p.Contains("/Maps/MainWorld_5/", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("/Maps/WorldTree", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("WorldTree", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static Dictionary<string, EffigyClassMetadata> LoadEffigyClassMetadata(IFileProvider provider,
+        IEnumerable<string> classNames, HashSet<string> relicTypes)
+    {
+        var byClass = new Dictionary<string, EffigyClassMetadata>(StringComparer.Ordinal);
+        var uassetPaths = provider.Files.Keys
+            .Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var cls in classNames.OrderBy(c => c, StringComparer.Ordinal))
+        {
+            var assetName = cls.EndsWith("_C", StringComparison.Ordinal) ? cls.Substring(0, cls.Length - 2) : cls;
+            var meta = new EffigyClassMetadata { ClassName = cls, ClassFamily = RelicClassFamily(cls) };
+            var assetPaths = uassetPaths
+                .Where(f => string.Equals(PackageBaseName(f), assetName, StringComparison.OrdinalIgnoreCase))
+                .Take(8)
+                .ToList();
+            meta.AssetPaths.AddRange(assetPaths);
+
+            foreach (var asset in assetPaths)
+            {
+                var pkgPath = asset.Substring(0, asset.Length - ".uasset".Length);
+                try
+                {
+                    if (!provider.TryLoadPackage(pkgPath, out var pkg)) continue;
+                    foreach (var export in pkg.GetExports())
+                    {
+                        if (!meta.ExportTypes.Contains(export.ExportType, StringComparer.Ordinal))
+                            meta.ExportTypes.Add(export.ExportType);
+                        bool interesting = export.Name.StartsWith("Default__", StringComparison.Ordinal)
+                            || export.Name.Equals(cls, StringComparison.OrdinalIgnoreCase)
+                            || export.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase);
+                        if (!interesting) continue;
+                        CollectEffigyEvidence(export.Properties, export.Name, meta.TypeProperties, meta.RelicReferences, relicTypes);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddEvidenceHit(meta.RelicReferences, "class_metadata_error", $"{pkgPath}: {e.Message}", 24);
+                }
+            }
+
+            meta.TypeName = RelicTypeFromEvidence(meta.TypeProperties, relicTypes);
+            if (meta.TypeName != null)
+                meta.TypeSource = meta.TypeProperties.FirstOrDefault(h => RelicTypeFromText(h.Value, relicTypes) == meta.TypeName)?.Path ?? "class metadata";
+            meta.TypeProperties = meta.TypeProperties
+                .OrderBy(h => h.Path, StringComparer.Ordinal)
+                .ThenBy(h => h.Value, StringComparer.Ordinal)
+                .ToList();
+            meta.RelicReferences = meta.RelicReferences
+                .OrderBy(h => h.Path, StringComparer.Ordinal)
+                .ThenBy(h => h.Value, StringComparer.Ordinal)
+                .Take(32)
+                .ToList();
+            meta.ExportTypes = meta.ExportTypes.OrderBy(x => x, StringComparer.Ordinal).ToList();
+            byClass[cls] = meta;
+        }
+
+        return byClass;
+    }
+
+    static string RelicClassFamily(string className)
+    {
+        if (string.IsNullOrEmpty(className)) return null;
+        var match = Regex.Match(className, @"^BP_LevelObject_Relic_(.+)_C$", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    static string PackageBaseName(string path)
+    {
+        var p = path?.Replace('\\', '/') ?? "";
+        var slash = p.LastIndexOf('/');
+        var file = slash >= 0 ? p.Substring(slash + 1) : p;
+        return file.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+            ? file.Substring(0, file.Length - ".uasset".Length)
+            : Path.GetFileNameWithoutExtension(file);
+    }
+
+    static Dictionary<string, MapLayer> LoadMapLayers(IFileProvider provider)
+    {
+        var layers = new Dictionary<string, MapLayer>(StringComparer.Ordinal);
+        try
+        {
+            var mapUi = provider.LoadPackageObject<UDataTable>("Pal/Content/Pal/DataTable/WorldMapUIData/DT_WorldMapUIData");
+            foreach (var r in mapUi.RowMap)
+            {
+                var min = r.Value.GetOrDefault<FVector>("landScapeRealPositionMin");
+                var max = r.Value.GetOrDefault<FVector>("landScapeRealPositionMax");
+                var mask = r.Value.GetOrDefault<FVector2D>("MaskTextureSize");
+                layers[r.Key.Text] = new MapLayer { Xmin = min.X, Ymin = min.Y, Xmax = max.X, Ymax = max.Y, MaskW = (int)mask.X, MaskH = (int)mask.Y };
+            }
+        }
+        catch (Exception e) { Console.WriteLine($"[effigy-discover] map layer load failed: {e.Message}"); }
+        return layers;
+    }
+
+    static HashSet<string> LoadRelicTypes(IFileProvider provider)
+    {
+        var types = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var enums = provider.MappingsForGame?.Enums;
+            if (enums == null) return types;
+            foreach (var kv in enums.OrderBy(k => k.Key, StringComparer.Ordinal))
+            {
+                if (!kv.Key.Contains("RelicType", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var e in kv.Value.OrderBy(x => x.Key))
+                {
+                    var type = NormalizeRelicType(e.Value);
+                    if (type != null) types.Add(type);
+                }
+            }
+        }
+        catch (Exception e) { Console.WriteLine($"[effigy-discover] relic type enum load failed: {e.Message}"); }
+        return types;
+    }
+
+    static FVector? ActorLocation(UObject actor)
+    {
+        var rootIdx = actor.GetOrDefault<FPackageIndex>("RootComponent");
+        var comp = rootIdx != null && rootIdx.IsExport ? rootIdx.Load() : null;
+        if (comp == null) return null;
+        return comp.GetOrDefault("RelativeLocation", new FVector());
+    }
+
+    static void CollectEffigyEvidence(IEnumerable<FPropertyTag> props, string path,
+        List<EffigyPropertyEvidence> typeProps, List<EffigyPropertyEvidence> relicRefs,
+        HashSet<string> knownRelicTypes, int depth = 0)
+    {
+        foreach (var p in props)
+        {
+            var propPath = string.IsNullOrEmpty(path) ? p.Name.Text : $"{path}.{p.Name.Text}";
+            ScanEffigyValue(p.Tag?.GenericValue, propPath, typeProps, relicRefs, knownRelicTypes, depth);
+        }
+    }
+
+    static void ScanEffigyValue(object value, string path,
+        List<EffigyPropertyEvidence> typeProps, List<EffigyPropertyEvidence> relicRefs,
+        HashSet<string> knownRelicTypes, int depth)
+    {
+        var text = EvidenceText(value);
+        if (IsRelicTypeEvidence(path, text, knownRelicTypes)) AddEvidenceHit(typeProps, path, text, 128);
+        if (IsRelicReference(path, text)) AddEvidenceHit(relicRefs, path, text, 256);
+        if (value == null || depth >= 6) return;
+
+        var s = AsStruct(value);
+        if (s != null)
+        {
+            CollectEffigyEvidence(s.Properties, path, typeProps, relicRefs, knownRelicTypes, depth + 1);
+            return;
+        }
+        if (value is UScriptArray arr)
+        {
+            for (int i = 0; i < arr.Properties.Count; i++)
+                ScanEffigyValue(arr.Properties[i].GenericValue, $"{path}[{i}]", typeProps, relicRefs, knownRelicTypes, depth + 1);
+            return;
+        }
+        if (value is UScriptMap map)
+        {
+            int i = 0;
+            foreach (var kv in map.Properties)
+            {
+                ScanEffigyValue(kv.Key?.GenericValue, $"{path}.key[{i}]", typeProps, relicRefs, knownRelicTypes, depth + 1);
+                ScanEffigyValue(kv.Value?.GenericValue, $"{path}.value[{i}]", typeProps, relicRefs, knownRelicTypes, depth + 1);
+                i++;
+            }
+        }
+    }
+
+    static bool IsRelicTypeEvidence(string path, string value, HashSet<string> knownRelicTypes)
+    {
+        if (path.Contains("RelicType", StringComparison.OrdinalIgnoreCase) || path.Contains("PalRelicType", StringComparison.OrdinalIgnoreCase)) return true;
+        return RelicTypeFromText(value, knownRelicTypes) != null;
+    }
+
+    static bool IsRelicReference(string path, string value)
+    {
+        bool PathHit(string s) => !string.IsNullOrEmpty(s)
+            && (s.Contains("Relic", StringComparison.OrdinalIgnoreCase) || s.Contains("Effigy", StringComparison.OrdinalIgnoreCase));
+        return PathHit(path) || PathHit(value);
+    }
+
+    static string RelicTypeFromEvidence(IEnumerable<EffigyPropertyEvidence> hits, HashSet<string> knownRelicTypes)
+    {
+        foreach (var h in hits.OrderBy(h => h.Path, StringComparer.Ordinal).ThenBy(h => h.Value, StringComparer.Ordinal))
+        {
+            var type = RelicTypeFromText(h.Value, knownRelicTypes);
+            if (type != null) return type;
+        }
+        return null;
+    }
+
+    static string RelicTypeFromText(string value, HashSet<string> knownRelicTypes)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var match = Regex.Match(value, @"EPalRelicType::([A-Za-z0-9_]+)");
+        if (match.Success) return NormalizeRelicType(match.Groups[1].Value);
+        var stripped = NormalizeRelicType(StripEnum(value.Trim()));
+        if (stripped != null && knownRelicTypes.Contains(stripped)) return knownRelicTypes.First(t => string.Equals(t, stripped, StringComparison.OrdinalIgnoreCase));
+        return null;
+    }
+
+    static string RelicTypeFromClassName(string className, HashSet<string> knownRelicTypes)
+    {
+        if (string.IsNullOrEmpty(className) || knownRelicTypes.Count == 0) return null;
+        return knownRelicTypes
+            .Where(t => t.Length >= 4 && className.Contains(t, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(t => t.Length)
+            .ThenBy(t => t, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    static string NormalizeRelicType(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var type = StripEnum(raw.Trim());
+        if (string.IsNullOrWhiteSpace(type)) return null;
+        if (type.Equals("None", StringComparison.OrdinalIgnoreCase) || type.Equals("MAX", StringComparison.OrdinalIgnoreCase)) return null;
+        if (type.EndsWith("_MAX", StringComparison.OrdinalIgnoreCase) || type.Contains("Max", StringComparison.OrdinalIgnoreCase)) return null;
+        if (Regex.IsMatch(type, @"^NewEnumerator\d+$", RegexOptions.IgnoreCase)) return null;
+        return type;
+    }
+
+    static string EvidenceText(object value)
+    {
+        if (value == null) return null;
+        string text = value switch
+        {
+            FName fn => fn.Text,
+            FText ft => ft.Text,
+            FGuid g => (g.A | g.B | g.C | g.D) != 0 ? UeDigits(g) : null,
+            _ => value.ToString(),
+        };
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        text = text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return text.Length <= 240 ? text : text.Substring(0, 240);
+    }
+
+    static void AddEvidenceHit(List<EffigyPropertyEvidence> hits, string path, string value, int max)
+    {
+        if (hits.Count >= max) return;
+        value ??= "";
+        if (hits.Any(h => h.Path == path && h.Value == value)) return;
+        hits.Add(new EffigyPropertyEvidence { Path = path, Value = value });
+    }
+
+    static void AddEvidence(List<string> evidence, string value)
+    {
+        if (!evidence.Contains(value, StringComparer.Ordinal)) evidence.Add(value);
+    }
+
+    static string MapSourceOf(string packagePath)
+    {
+        var path = packagePath?.Replace('\\', '/') ?? "";
+        const string marker = "/Maps/";
+        var idx = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return "unknown";
+        var rest = path.Substring(idx + marker.Length);
+        var slash = rest.IndexOf('/');
+        return slash >= 0 ? rest.Substring(0, slash) : Path.GetFileNameWithoutExtension(rest);
+    }
+
+    static string WorldOf(string packagePath, FVector? loc, MapLayer main, MapLayer tree)
+    {
+        if (loc != null)
+        {
+            if (tree != null && tree.Contains(loc.Value.X, loc.Value.Y)) return "Tree";
+            if (main != null && main.Contains(loc.Value.X, loc.Value.Y)) return "MainMap";
+        }
+        var path = packagePath ?? "";
+        if (path.Contains("WorldTree", StringComparison.OrdinalIgnoreCase) || path.Contains("/Tree/", StringComparison.OrdinalIgnoreCase)) return "Tree";
+        return "unknown";
+    }
+
+    static double? Round(double? value) => value == null ? null : Math.Round(value.Value, 3);
 
     static int ExportMap(IFileProvider provider)
     {
@@ -2998,6 +3587,34 @@ static class Program
             catch (Exception e) { Console.WriteLine($"[icon] {assetPath} fail: {e.Message}"); }
         }
         return count;
+    }
+
+    static (string build, string source) ResolveGameBuildInfo(string paksDir)
+    {
+        var envBuild = Environment.GetEnvironmentVariable("PALCALC_GAME_BUILD");
+        if (!string.IsNullOrWhiteSpace(envBuild)) return (envBuild.Trim(), "PALCALC_GAME_BUILD");
+
+        try
+        {
+            var dir = new DirectoryInfo(Path.GetFullPath(paksDir));
+            for (var cur = dir; cur != null; cur = cur.Parent)
+            {
+                var manifest = Path.Combine(cur.FullName, "appmanifest_1623730.acf");
+                if (!File.Exists(manifest)) continue;
+
+                var text = File.ReadAllText(manifest);
+                var build = Regex.Match(text, "\"buildid\"\\s+\"([^\"]+)\"");
+                if (build.Success) return (build.Groups[1].Value, $"Steam appmanifest buildid ({manifest})");
+
+                var target = Regex.Match(text, "\"TargetBuildID\"\\s+\"([^\"]+)\"");
+                if (target.Success) return (target.Groups[1].Value, $"Steam appmanifest TargetBuildID ({manifest})");
+
+                return ("unknown", $"Steam appmanifest missing buildid ({manifest})");
+            }
+        }
+        catch (Exception e) { return ("unknown", $"build lookup failed: {e.Message}"); }
+
+        return ("unknown", "Steam appmanifest_1623730.acf not found above pak directory");
     }
 
     // ---- helpers ----

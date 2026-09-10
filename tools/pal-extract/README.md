@@ -61,6 +61,8 @@ dotnet run -c Release
 
 Paths default to the standard Steam install and `./Mappings.usmap`; override with env vars
 `PALCALC_PALWORLD_PAKS` (folder containing `Pal-Windows.pak`) and `PALCALC_MAPPINGS_USMAP`.
+Extraction metadata resolves `game_build` from Steam's `appmanifest_1623730.acf` when available;
+set `PALCALC_GAME_BUILD` only for non-Steam layouts where that local source is unavailable.
 The run asserts validation gates (species >= 299, Lamball partner skill + "becomes a shield"
 description, Jormuntide elements, non-empty Combi arrays, `Legend`/`Lucky` passives with effects,
 a negative-rank passive, partner coverage, zero unresolved `{` template placeholders across all
@@ -136,3 +138,10 @@ evidence log under `testdata/probe/`: `--discover-incident` (incident/bounty Dat
 `bounty.log`), `--discover-bounty-actors` (world-partition NPC/spawner actor histogram + bounty/FT
 actor locations -> `bounty-actors.log`), `--list-dt` (all DataTable paths -> `datatables.log`), and
 `--dump-table <pkgPath>` (one DataTable's rows to stdout).
+
+`--discover-effigies` writes `testdata/probe/effigies.json`: a deterministic current-game sweep of
+world-placed relic/effigy level actors. It records actor class, `LevelObjectInstanceId`, raw world
+coordinates, map package provenance, MainMap/Tree assignment, class-family suffixes, and any
+`EPalRelicType` evidence found on the placed actor or class CDO. It intentionally does not update
+`app/public/map/map-data.json` or infer a type when the game data does not expose one. By default it
+scans current world map packages; add `--all-maps` for a slower whole-`Pal/Maps` probe.

@@ -15,6 +15,8 @@ version is marked Unreleased.
   endpoint.
 - Parsed both legacy flat and modern typed Palworld effigy collection flags
   while retaining the existing flattened GUID list for map compatibility.
+- Added developer tooling to discover modern world-placed effigy actors and
+  their typed class metadata from current Palworld map packages.
 
 The remaining entries below are inherited Pal Lab release history retained for
 historical accuracy and upstream attribution.
