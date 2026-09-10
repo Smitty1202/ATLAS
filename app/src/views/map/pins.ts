@@ -51,7 +51,8 @@ export interface EffigyTypeCount {
 export interface PoiCounts {
   fastTravel: { found: number; total: number };
   effigies: { found: number; total: number };
-  effigyTypes: EffigyTypeCount[];
+  /** Optional so older/fallback count objects degrade to no type rows. */
+  effigyTypes?: EffigyTypeCount[];
   towers: { found: number; total: number; joined: boolean };
   bounties: number;
   alphas: number;
