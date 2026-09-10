@@ -67,6 +67,7 @@ const SHOW_HIDDEN_KEY = "atlas.mapShowHidden";
 const FOG_ON_KEY = "atlas.mapFogOn";
 const MAP_LAYER_KEY = "atlas.mapLayer";
 const MAP_VIEWS_KEY = "atlas.mapViews";
+const FOCUS_HIGHLIGHT_MS = 6500;
 
 const DEFAULT_FILTERS: LayerFilters = {
   fastTravel: true,
@@ -230,6 +231,10 @@ export default function MapView() {
     sy: number;
     dot: SpawnDot;
   } | null>(null);
+  const [focusedPoiId, setFocusedPoiId] = useState<string | null>(null);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   const [view, setView] = useState<ViewTransform>({ k: 0.1, tx: 0, ty: 0 });
   const viewRef = useRef(view); // committed transform (mirrors `view`; kCommitted for gesture math)
@@ -264,6 +269,21 @@ export default function MapView() {
   const bitmapCache = useRef<Map<string, ImageBitmap>>(new Map());
 
   const entry: MapEntry | null = mapData?.maps[layer] ?? null;
+
+  const clearLocalFocus = useCallback(() => {
+    clearTimeout(focusTimer.current);
+    focusTimer.current = undefined;
+    setFocusedPoiId(null);
+  }, []);
+
+  const armLocalFocus = useCallback((id: string) => {
+    clearTimeout(focusTimer.current);
+    setFocusedPoiId(id);
+    focusTimer.current = setTimeout(() => {
+      setFocusedPoiId((current) => (current === id ? null : current));
+      focusTimer.current = undefined;
+    }, FOCUS_HIGHLIGHT_MS);
+  }, []);
 
   // --- Load the map manifest + icons once (shared cached loaders). ---------
   useEffect(() => {
@@ -331,10 +351,11 @@ export default function MapView() {
   // --- Consume a one-shot dex -> map spawn target. -------------------------
   useEffect(() => {
     if (!mapSpawnTarget) return;
+    clearLocalFocus();
     setSpawnSpecies(mapSpawnTarget);
     setFilters((f) => (f.spawns ? f : { ...f, spawns: true }));
     clearMapSpawnTarget();
-  }, [mapSpawnTarget, clearMapSpawnTarget]);
+  }, [mapSpawnTarget, clearMapSpawnTarget, clearLocalFocus]);
 
   // --- Load (and cache) the active layer's image lazily. ------------------
   useEffect(() => {

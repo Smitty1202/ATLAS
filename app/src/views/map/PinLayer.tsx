@@ -76,6 +76,116 @@ export function pinZoomScale(k: number): number {
   return Math.min(Math.pow(k, 0.45), 1.5);
 }
 
+export interface VisiblePoi {
+  pin: PoiPin;
+  left: number;
+  top: number;
+  focused: boolean;
+}
+
+export interface ResolveVisiblePoisOptions {
+  entry: MapEntry;
+  layer: string;
+  k: number;
+  tx: number;
+  ty: number;
+  vw: number;
+  vh: number;
+  pois: PoiPin[];
+  filters: LayerFilters;
+  effigySelection: EffigyTypeSelection;
+  fog: FogMask | null;
+  fogOn: boolean;
+  showHidden: boolean;
+  focusedPoiId?: string | null;
+}
+
+export function poiFocusId(pin: PoiPin): string {
+  return `${pin.kind}:${pin.key}`;
+}
+
+function pinHiddenByFilters(
+  pin: PoiPin,
+  filters: LayerFilters,
+  effigySelection: EffigyTypeSelection,
+): boolean {
+  if (pin.kind === "fast_travel" && !filters.fastTravel) return true;
+  if (pin.kind === "alpha" && !filters.alpha) return true;
+  if (pin.kind === "effigy" && !filters.effigies) return true;
+  if (
+    pin.kind === "effigy" &&
+    !effigyTypeIsVisible(effigySelection, pin.effigyType)
+  )
+    return true;
+  if (pin.kind === "effigy" && filters.hideUnfoundEffigies && !pin.found)
+    return true;
+  if (pin.kind === "effigy" && filters.hideFoundEffigies && pin.found)
+    return true;
+  if (pin.kind === "bounty" && !filters.bounties) return true;
+  return pin.kind === "tower" && !filters.towers;
+}
+
+function pinHiddenByFog({
+  entry,
+  pin,
+  fog,
+  fogOn,
+  showHidden,
+}: {
+  entry: MapEntry;
+  pin: PoiPin;
+  fog: FogMask | null;
+  fogOn: boolean;
+  showHidden: boolean;
+}): boolean {
+  if (!fogOn || !fog || pin.known || showHidden) return false;
+  const [W, H] = entry.px;
+  const [u, v] = worldToPx(entry, pin.x, pin.y);
+  return !isRevealed(fog, u / W, v / H);
+}
+
+export function resolveVisiblePois({
+  entry,
+  layer,
+  k,
+  tx,
+  ty,
+  vw,
+  vh,
+  pois,
+  filters,
+  effigySelection,
+  fog,
+  fogOn,
+  showHidden,
+  focusedPoiId = null,
+}: ResolveVisiblePoisOptions): VisiblePoi[] {
+  if (k <= 0) return [];
+  const minU = (-tx - CULL_MARGIN) / k;
+  const minV = (-ty - CULL_MARGIN) / k;
+  const maxU = (vw - tx + CULL_MARGIN) / k;
+  const maxV = (vh - ty + CULL_MARGIN) / k;
+  const out: VisiblePoi[] = [];
+  const focusedOut: VisiblePoi[] = [];
+
+  for (const pin of pois) {
+    if (pin.map !== layer) continue;
+    const focused = focusedPoiId === poiFocusId(pin);
+    if (!focused && pinHiddenByFilters(pin, filters, effigySelection)) continue;
+
+    const [u, v] = worldToPx(entry, pin.x, pin.y);
+    if (u < minU || u > maxU || v < minV || v > maxV) continue;
+    if (!focused && pinHiddenByFog({ entry, pin, fog, fogOn, showHidden }))
+      continue;
+
+    const visible = { pin, left: u * k, top: v * k, focused };
+    if (focused) focusedOut.push(visible);
+    else out.push(visible);
+  }
+
+  return [...out, ...focusedOut];
+}
+
 const DIM_STYLE: CSSProperties = {
   transform: "scale(calc(var(--pin-dim-scale, 1) * var(--pin-zoom-scale, 1)))",
   opacity: "var(--pin-dim-op, 1)",
@@ -320,18 +430,35 @@ function FieldBossNote({ level, defeated }: { level?: number; defeated: boolean 
   );
 }
 
+function FocusPulse() {
+  return (
+    <>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border-2 border-amber/80 bg-amber/20"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber shadow-lg"
+      />
+    </>
+  );
+}
+
 function AlphaPin({
   pin,
   left,
   top,
   icons,
   onOpenSpecies,
+  focused,
 }: {
   pin: PoiPin;
   left: number;
   top: number;
   icons: IconManifest | null;
   onOpenSpecies: (id: string) => void;
+  focused: boolean;
 }) {
   const badgeSrc = icons?.alpha_badge
     ? iconUrl(icons.alpha_badge)
@@ -341,10 +468,13 @@ function AlphaPin({
       type="button"
       tabIndex={-1}
       onClick={() => pin.speciesId && onOpenSpecies(pin.speciesId)}
-      className="group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+      className={`group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber ${
+        focused ? "z-20" : ""
+      }`}
       style={{ left, top }}
       aria-label={`Field Boss${pin.level != null ? `, level ${pin.level}` : ""}${pin.found ? ", defeated" : ""}`}
     >
+      {focused && <FocusPulse />}
       <span
         className="relative block transition-transform duration-150 ease-out"
         style={ZOOM_STYLE}
@@ -393,6 +523,7 @@ function PinLayer({
   icons,
   onOpenSpecies,
   containerRef,
+  focusedPoiId = null,
 }: {
   entry: MapEntry;
   layer: string;
@@ -412,8 +543,8 @@ function PinLayer({
   icons: IconManifest | null;
   onOpenSpecies: (id: string) => void;
   containerRef?: RefObject<HTMLDivElement | null>;
+  focusedPoiId?: string | null;
 }) {
-  const [W, H] = entry.px;
   const bx = Math.round(tx / CULL_STEP);
   const by = Math.round(ty / CULL_STEP);
   const lowZoom = k < LOW_ZOOM_K;
@@ -427,40 +558,23 @@ function PinLayer({
     return () => window.removeEventListener(EFFIGY_TYPES_EVENT, sync);
   }, []);
 
-  const spoilerHidden = (worldX: number, worldY: number, known: boolean) => {
-    if (!fogOn || !fog || known || showHidden) return false;
-    const [u, v] = worldToPx(entry, worldX, worldY);
-    return !isRevealed(fog, u / W, v / H);
-  };
-
   const visiblePois = useMemo(() => {
-    const minU = (-tx - CULL_MARGIN) / k;
-    const minV = (-ty - CULL_MARGIN) / k;
-    const maxU = (vw - tx + CULL_MARGIN) / k;
-    const maxV = (vh - ty + CULL_MARGIN) / k;
-    const out: { pin: PoiPin; left: number; top: number }[] = [];
-    for (const pin of pois) {
-      if (pin.map !== layer) continue;
-      if (pin.kind === "fast_travel" && !filters.fastTravel) continue;
-      if (pin.kind === "alpha" && !filters.alpha) continue;
-      if (pin.kind === "effigy" && !filters.effigies) continue;
-      if (
-        pin.kind === "effigy" &&
-        !effigyTypeIsVisible(effigySelection, pin.effigyType)
-      )
-        continue;
-      if (pin.kind === "effigy" && filters.hideUnfoundEffigies && !pin.found)
-        continue;
-      if (pin.kind === "effigy" && filters.hideFoundEffigies && pin.found)
-        continue;
-      if (pin.kind === "bounty" && !filters.bounties) continue;
-      if (pin.kind === "tower" && !filters.towers) continue;
-      const [u, v] = worldToPx(entry, pin.x, pin.y);
-      if (u < minU || u > maxU || v < minV || v > maxV) continue;
-      if (spoilerHidden(pin.x, pin.y, pin.known)) continue;
-      out.push({ pin, left: u * k, top: v * k });
-    }
-    return out;
+    return resolveVisiblePois({
+      entry,
+      layer,
+      k,
+      tx,
+      ty,
+      vw,
+      vh,
+      pois,
+      filters,
+      effigySelection,
+      fog,
+      fogOn,
+      showHidden,
+      focusedPoiId,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     pois,
@@ -476,6 +590,7 @@ function PinLayer({
     fogOn,
     showHidden,
     entry,
+    focusedPoiId,
   ]);
 
   const visiblePlayers = useMemo(() => {
@@ -571,7 +686,7 @@ function PinLayer({
           );
         })}
 
-        {visiblePois.map(({ pin, left, top }) =>
+        {visiblePois.map(({ pin, left, top, focused }) =>
           pin.kind === "alpha" ? (
             <AlphaPin
               key={pin.key}
@@ -580,13 +695,17 @@ function PinLayer({
               top={top}
               icons={icons}
               onOpenSpecies={onOpenSpecies}
+              focused={focused}
             />
           ) : (
             <div
               key={pin.key}
-              className="group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
+              className={`group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 ${
+                focused ? "z-20" : ""
+              }`}
               style={{ left, top }}
             >
+              {focused && <FocusPulse />}
               <span
                 className="block transition-[transform,opacity] duration-150 ease-out"
                 style={pin.kind === "tower" ? ZOOM_STYLE : DIM_STYLE}
