@@ -1094,15 +1094,15 @@ function Shell() {
         <div className="flex items-center gap-2.5 px-4 pb-4 pt-5">
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-amber/15 ring-1 ring-amber/40">
             <span className="font-display text-lg font-bold leading-none text-amber">
-              P
+              A
             </span>
           </span>
           <div className="leading-tight">
-            <div className="font-display text-[15px] font-bold tracking-[0.14em] text-ink">
-              PAL&middot;LAB
+            <div className="whitespace-nowrap font-display text-[13px] font-bold tracking-[0.08em] text-ink">
+              SMITTY'S ATLAS
             </div>
             <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-ink-faint">
-              Breeding lab
+              Palworld companion
             </div>
           </div>
         </div>
