@@ -5,6 +5,7 @@ using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Assets.Exports.Engine;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Assets.Objects.Properties;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
@@ -87,7 +88,7 @@ static class Program
                 })
                 .ToArray();
 
-            Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(outPath) ?? ".");
             var payload = new
             {
                 game_build = ResolveGameBuild(paksDir),
@@ -108,7 +109,7 @@ static class Program
         }
     }
 
-    static string? Arg(string[] args, string name)
+    static string Arg(string[] args, string name)
     {
         var i = Array.IndexOf(args, name);
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
@@ -137,7 +138,7 @@ static class Program
         return result;
     }
 
-    static string? StringValue(Dictionary<string, object> values, string name)
+    static string StringValue(Dictionary<string, object> values, string name)
     {
         if (!values.TryGetValue(name, out var value) || value == null) return null;
         return value is FName fn ? fn.Text : value.ToString();
