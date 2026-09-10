@@ -10,6 +10,8 @@ version is marked Unreleased.
   completion counters, and world/player/base/owned-Pal summary stats.
 - Added lifetime Pal capture parsing from player `RecordData` so Progress
   counts captured species even after a Pal leaves the current roster.
+- Added Pal Collection details to Progress, splitting lifetime species state
+  into captured, discovered, and undiscovered lists with Pal-dex navigation.
 
 ## [0.3.0] - 2026-09-10
 

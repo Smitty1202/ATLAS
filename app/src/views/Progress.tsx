@@ -6,8 +6,12 @@ import { invoke } from "../lib/tauri";
 import { useMapStateRefresh } from "../lib/use-map-state";
 import { useAppState } from "../state";
 import {
+  buildPalCollectionProgress,
   buildProgressStats,
   type JoinedRatioStat,
+  type PalCollectionBucket,
+  type PalCollectionItem,
+  type PalCollectionProgress,
   type RatioStat,
 } from "./progress/stats";
 
@@ -99,8 +103,153 @@ function progressSub(stat: JoinedRatioStat, complete: string): string {
   return stat.found > 0 ? "Partial tracking" : "Awaiting map keys";
 }
 
+const COLLECTION_BUCKETS: {
+  key: PalCollectionBucket;
+  label: string;
+  sub: string;
+}[] = [
+  { key: "captured", label: "Captured", sub: "Lifetime captures" },
+  {
+    key: "discovered",
+    label: "Discovered, not captured",
+    sub: "Seen only",
+  },
+  { key: "undiscovered", label: "Undiscovered", sub: "Not seen" },
+];
+
+function dexNo(item: PalCollectionItem): string {
+  return Number.isFinite(item.paldexNo)
+    ? `#${String(item.paldexNo).padStart(3, "0")}`
+    : "#---";
+}
+
+function filteredSpecies(
+  items: PalCollectionItem[],
+  query: string,
+): PalCollectionItem[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter(
+    (item) =>
+      item.name.toLowerCase().includes(q) ||
+      String(item.paldexNo).includes(q) ||
+      dexNo(item).toLowerCase().includes(q),
+  );
+}
+
+function CollectionList({
+  collection,
+  query,
+  openBuckets,
+  onQuery,
+  onToggle,
+  onOpenSpecies,
+}: {
+  collection: PalCollectionProgress;
+  query: string;
+  openBuckets: Record<PalCollectionBucket, boolean>;
+  onQuery: (query: string) => void;
+  onToggle: (bucket: PalCollectionBucket, open: boolean) => void;
+  onOpenSpecies: (speciesId: string) => void;
+}) {
+  const hasQuery = query.trim() !== "";
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="grid gap-2 sm:grid-cols-3">
+          {COLLECTION_BUCKETS.map((bucket) => (
+            <div
+              key={bucket.key}
+              className="rounded-md border border-line bg-raised/45 px-3 py-2"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                {bucket.label}
+              </div>
+              <div className="mt-1 font-mono text-[20px] font-semibold tabular-nums text-ink">
+                {collection[bucket.key].length}
+                <span className="ml-1.5 text-[12px] font-normal text-ink-faint">
+                  / {collection.total}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <label className="flex min-w-0 flex-col gap-1 md:w-72">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+            Search species
+          </span>
+          <input
+            value={query}
+            onChange={(e) => onQuery(e.currentTarget.value)}
+            placeholder="Name or dex #"
+            className="rounded-md border border-line bg-abyss px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-amber/60"
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-3">
+        {COLLECTION_BUCKETS.map((bucket) => {
+          const items = collection[bucket.key];
+          const visible = filteredSpecies(items, query);
+          const open = hasQuery || openBuckets[bucket.key];
+          return (
+            <details
+              key={bucket.key}
+              open={open}
+              onToggle={(e) => {
+                if (!hasQuery) onToggle(bucket.key, e.currentTarget.open);
+              }}
+              className="overflow-hidden rounded-md border border-line bg-panel"
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-b border-line bg-raised/45 px-3 py-2.5 marker:hidden">
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-semibold text-ink">
+                    {bucket.label}
+                  </span>
+                  <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                    {bucket.sub}
+                  </span>
+                </span>
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-faint">
+                  <span className="text-amber">{visible.length}</span>
+                  {hasQuery && visible.length !== items.length ? ` / ${items.length}` : ""}
+                </span>
+              </summary>
+              <div className="max-h-80 overflow-y-auto p-2">
+                {visible.length > 0 ? (
+                  <ul className="grid gap-1">
+                    {visible.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          onClick={() => onOpenSpecies(item.id)}
+                          className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-hover focus:bg-hover"
+                        >
+                          <span className="w-12 shrink-0 font-mono text-[11px] tabular-nums text-ink-faint">
+                            {dexNo(item)}
+                          </span>
+                          <span className="min-w-0 truncate text-[13px] font-medium text-ink">
+                            {item.name}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="px-2.5 py-6 text-center text-[13px] text-ink-faint">
+                    No matches.
+                  </div>
+                )}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Progress() {
-  const { saveDir, saveSummary, saveLoading, saveError, playerScope } =
+  const { saveDir, saveSummary, saveLoading, saveError, playerScope, requestDex } =
     useAppState();
   const { mapState, mapStateLoading, mapStateError } = useMapStateRefresh(saveDir);
   const [mapData, setMapData] = useState<MapData | null>(null);
@@ -109,6 +258,14 @@ export default function Progress() {
   const [species, setSpecies] = useState<SpeciesEntry[]>([]);
   const [speciesLoading, setSpeciesLoading] = useState(true);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
+  const [collectionQuery, setCollectionQuery] = useState("");
+  const [openBuckets, setOpenBuckets] = useState<
+    Record<PalCollectionBucket, boolean>
+  >({
+    captured: true,
+    discovered: true,
+    undiscovered: false,
+  });
 
   useEffect(() => {
     let alive = true;
@@ -160,6 +317,11 @@ export default function Progress() {
     }
     return buildProgressStats(saveSummary, species, mapData, mapState, playerScope);
   }, [saveSummary, species, mapData, mapState, playerScope]);
+
+  const collection = useMemo(() => {
+    if (!saveSummary || speciesLoading || speciesError) return null;
+    return buildPalCollectionProgress(saveSummary, species, playerScope);
+  }, [saveSummary, species, speciesLoading, speciesError, playerScope]);
 
   const scopedName = scopeLabel(playerScope, saveSummary?.players ?? []);
   const loadingProgress =
@@ -296,6 +458,30 @@ export default function Progress() {
               </div>
             ) : (
               <LoadingBlock label="Loading progress" />
+            )}
+          </section>
+
+          <section className="mt-6">
+            <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.22em] text-ink-faint">
+              Pal Collection
+            </div>
+            {speciesError ? (
+              <ErrorBlock title="Pal collection unavailable" error={speciesError} />
+            ) : speciesLoading && !collection ? (
+              <LoadingBlock label="Loading collection" />
+            ) : collection ? (
+              <CollectionList
+                collection={collection}
+                query={collectionQuery}
+                openBuckets={openBuckets}
+                onQuery={setCollectionQuery}
+                onToggle={(bucket, open) =>
+                  setOpenBuckets((prev) => ({ ...prev, [bucket]: open }))
+                }
+                onOpenSpecies={requestDex}
+              />
+            ) : (
+              <LoadingBlock label="Loading collection" />
             )}
           </section>
         </main>

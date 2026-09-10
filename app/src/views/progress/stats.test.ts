@@ -9,7 +9,7 @@ import type {
   SaveSummary,
   SpeciesEntry,
 } from "../../lib/types";
-import { buildProgressStats } from "./stats";
+import { buildPalCollectionProgress, buildProgressStats } from "./stats";
 
 function guid(seed: number): Guid {
   return Array.from({ length: 16 }, (_, i) => (seed + i) & 0xff);
@@ -77,9 +77,9 @@ function savePlayer(
 }
 
 const species: SpeciesEntry[] = [
-  { id: "SheepBall", name: "Lamball" },
-  { id: "PinkCat", name: "Cattiva" },
-  { id: "Penguin", name: "Pengullet" },
+  { id: "SheepBall", name: "Lamball", paldex_no: 1 },
+  { id: "PinkCat", name: "Cattiva", paldex_no: 2 },
+  { id: "Penguin", name: "Pengullet", paldex_no: 10 },
 ] as SpeciesEntry[];
 
 const mapData: MapData = {
@@ -231,4 +231,85 @@ test("all-player progress unions lifetime captures and map flags", () => {
   expect(stats.fieldBosses).toEqual({ found: 1, total: 1, joined: true });
   expect(stats.wantedFugitives).toEqual({ found: 1, total: 1, joined: true });
   expect(stats.towerRegions).toEqual({ found: 1, total: 1, joined: true });
+});
+
+test("pal collection classifies captured, discovered, and undiscovered species", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const summary: SaveSummary = {
+    world_name: "Mosslight",
+    players: [
+      savePlayer(
+        p1Hex,
+        "Ada",
+        { SheepBall: 4, PinkCat: 0 },
+        ["SheepBall", "PinkCat"],
+      ),
+    ],
+    pals: [],
+    bases: [],
+    warnings: [],
+  };
+
+  const collection = buildPalCollectionProgress(summary, species, p1Hex);
+
+  expect(collection.total).toBe(3);
+  expect(collection.captured.map((s) => s.name)).toEqual(["Lamball"]);
+  expect(collection.discovered.map((s) => s.name)).toEqual(["Cattiva"]);
+  expect(collection.undiscovered.map((s) => s.name)).toEqual(["Pengullet"]);
+});
+
+test("pal collection unions lifetime data for all-player scope", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const p2Hex = "2122232425262728292a2b2c2d2e2f30";
+  const summary: SaveSummary = {
+    world_name: "Mosslight",
+    players: [
+      savePlayer(p1Hex, "Ada", { SheepBall: 1, PinkCat: 0 }, [
+        "SheepBall",
+        "PinkCat",
+      ]),
+      savePlayer(p2Hex, "Bea", { PinkCat: 2, Penguin: 0 }, [
+        "PinkCat",
+        "Penguin",
+      ]),
+    ],
+    pals: [],
+    bases: [],
+    warnings: [],
+  };
+
+  const p1Collection = buildPalCollectionProgress(summary, species, p1Hex);
+  const allCollection = buildPalCollectionProgress(summary, species, "all");
+
+  expect(p1Collection.captured.map((s) => s.id)).toEqual(["SheepBall"]);
+  expect(p1Collection.discovered.map((s) => s.id)).toEqual(["PinkCat"]);
+  expect(p1Collection.undiscovered.map((s) => s.id)).toEqual(["Penguin"]);
+  expect(allCollection.captured.map((s) => s.id)).toEqual([
+    "SheepBall",
+    "PinkCat",
+  ]);
+  expect(allCollection.discovered.map((s) => s.id)).toEqual(["Penguin"]);
+  expect(allCollection.undiscovered).toEqual([]);
+});
+
+test("pal collection treats zero-count captures as not captured", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const summary: SaveSummary = {
+    world_name: "Mosslight",
+    players: [
+      savePlayer(p1Hex, "Ada", { SheepBall: 0, PinkCat: 0 }, ["PinkCat"]),
+    ],
+    pals: [],
+    bases: [],
+    warnings: [],
+  };
+
+  const collection = buildPalCollectionProgress(summary, species, p1Hex);
+
+  expect(collection.captured).toEqual([]);
+  expect(collection.discovered.map((s) => s.id)).toEqual(["PinkCat"]);
+  expect(collection.undiscovered.map((s) => s.id)).toEqual([
+    "SheepBall",
+    "Penguin",
+  ]);
 });

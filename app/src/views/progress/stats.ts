@@ -31,6 +31,21 @@ export interface ProgressStats {
   towerRegions: JoinedRatioStat;
 }
 
+export type PalCollectionBucket = "captured" | "discovered" | "undiscovered";
+
+export interface PalCollectionItem {
+  id: string;
+  name: string;
+  paldexNo: number;
+}
+
+export interface PalCollectionProgress {
+  total: number;
+  captured: PalCollectionItem[];
+  discovered: PalCollectionItem[];
+  undiscovered: PalCollectionItem[];
+}
+
 function ownerHex(pal: OwnedPal): string | null {
   return pal.owner_player_uid ? hexGuid(pal.owner_player_uid) : null;
 }
@@ -54,15 +69,32 @@ function scopedCapturedSpecies(
   speciesIds: Set<string>,
   playerScope: string,
 ): Set<string> {
+  return scopedLifetimeSpecies(summary, playerScope, speciesIds).captured;
+}
+
+function scopedLifetimeSpecies(
+  summary: SaveSummary,
+  playerScope: string,
+  speciesIds?: Set<string>,
+): { captured: Set<string>; unlocked: Set<string> } {
   const captured = new Set<string>();
+  const unlocked = new Set<string>();
   for (const player of scopedPlayers(summary, playerScope)) {
     for (const entry of player.pal_capture_counts ?? []) {
-      if ((entry.count ?? 0) > 0 && speciesIds.has(entry.species_id)) {
+      if (
+        (entry.count ?? 0) > 0 &&
+        (!speciesIds || speciesIds.has(entry.species_id))
+      ) {
         captured.add(entry.species_id);
       }
     }
+    for (const speciesId of player.paldeck_unlocked ?? []) {
+      if (!speciesIds || speciesIds.has(speciesId)) {
+        unlocked.add(speciesId);
+      }
+    }
   }
-  return captured;
+  return { captured, unlocked };
 }
 
 function scopedBaseCount(summary: SaveSummary, playerScope: string): number {
@@ -116,4 +148,42 @@ export function buildProgressStats(
     wantedFugitives: defeatStat(counts.wantedFugitives, counts.bounties),
     towerRegions: counts.towers,
   };
+}
+
+export function buildPalCollectionProgress(
+  summary: SaveSummary,
+  species: SpeciesEntry[],
+  playerScope: string,
+): PalCollectionProgress {
+  const speciesIds = new Set(species.map((s) => s.id));
+  const lifetime = scopedLifetimeSpecies(summary, playerScope, speciesIds);
+  const out: PalCollectionProgress = {
+    total: species.length,
+    captured: [],
+    discovered: [],
+    undiscovered: [],
+  };
+  const rows = [...species].sort(
+    (a, b) =>
+      (a.paldex_no ?? Number.MAX_SAFE_INTEGER) -
+        (b.paldex_no ?? Number.MAX_SAFE_INTEGER) ||
+      a.name.localeCompare(b.name),
+  );
+
+  for (const sp of rows) {
+    const item: PalCollectionItem = {
+      id: sp.id,
+      name: sp.name,
+      paldexNo: sp.paldex_no,
+    };
+    if (lifetime.captured.has(sp.id)) {
+      out.captured.push(item);
+    } else if (lifetime.unlocked.has(sp.id)) {
+      out.discovered.push(item);
+    } else {
+      out.undiscovered.push(item);
+    }
+  }
+
+  return out;
 }
