@@ -21,12 +21,7 @@ import { baseSpeciesId } from "../../lib/map-data";
 
 export type PoiKind = "fast_travel" | "alpha" | "effigy" | "bounty" | "tower";
 
-/** One resolved POI pin in world space. `found` is meaningful only for
- *  fast-travel (unlocked), effigies (collected), and towers (conquered); it
- *  stays false for alpha / bounty pins (no per-pin discovered state in scope)
- *  and whenever the pin has no id to match. `known` gates the fog spoiler rule:
- *  an unlocked fast-travel, a found effigy, or a tower (a landmark visible from
- *  the start) is already known to the player, so it shows through fog. */
+/** One resolved POI pin in world space. */
 export interface PoiPin {
   key: string;
   kind: PoiKind;
@@ -37,28 +32,32 @@ export interface PoiPin {
   known: boolean;
   /** Alpha or typed-effigy Pal internal species id. */
   speciesId?: string;
+  /** Canonical Palworld relic type used by the effigy-type filter. */
+  effigyType?: string;
   /** Alpha only: field-boss level (hover chip). */
   level?: number;
   /** Fast-travel / effigy / bounty / tower display name. */
   name?: string | null;
 }
 
-/** Per-layer found/total counts for the filter panel rows. `joined` is false
- *  when the counts come from raw flag-set sizes (no POI carried a guid, so no
- *  per-pin match was possible). `towers.joined` is independent: towers join on
- *  a per-POI `key` against the save's `towers_defeated`, absent on older data. */
+export interface EffigyTypeCount {
+  key: string;
+  label: string;
+  found: number;
+  total: number;
+}
+
+/** Per-layer found/total counts for the filter panel rows. */
 export interface PoiCounts {
   fastTravel: { found: number; total: number };
   effigies: { found: number; total: number };
+  effigyTypes: EffigyTypeCount[];
   towers: { found: number; total: number; joined: boolean };
   bounties: number;
   alphas: number;
   joined: boolean;
 }
 
-/** Union the scoped players' flag arrays into one Set. `scope` is a player uid
- *  hex or `"all"` (every player's flags unioned). Flag keys are already the
- *  32-char UPPERCASE hex the pak guids are matched against — no normalization. */
 function unionFlags(
   players: MapState["players"],
   scope: string,
@@ -72,12 +71,6 @@ function unionFlags(
   return out;
 }
 
-/** Turn a bounty's boss CharacterID into a readable enemy-type label. Bounty
- *  names are procedural (always null), so the wanted-target TYPE is the useful
- *  label: strip a leading `BOSS_`, then split on underscores, CamelCase, and
- *  letter→digit boundaries. `BOSS_FireCult_FlameThrower` -> "Fire Cult Flame
- *  Thrower", `VikingElite` -> "Viking Elite", `BOSS_Male_Soldier02` -> "Male
- *  Soldier 02". */
 function humanizeCid(cid: string): string {
   return cid
     .replace(/^BOSS_/, "")
@@ -111,22 +104,24 @@ const EFFIGY_PAL_NAMES: Record<string, string> = {
   MoveSpeed: "Mimog",
 };
 
+function effigyTypeKey(type: string | null | undefined): string {
+  const key = (type ?? "CapturePower").replace(/^EPalRelicType::/, "").trim();
+  return key || "Unknown";
+}
+
 function effigyDisplayName(type: string | null | undefined): string {
-  const key = (type ?? "CapturePower").replace(/^EPalRelicType::/, "");
+  const key = effigyTypeKey(type);
   const pal = EFFIGY_PAL_NAMES[key];
   if (pal) return `${pal} Effigy`;
   const human = key.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
   return `${human || "Unknown"} Effigy`;
 }
 
-/** Modern effigy actor classes are `BP_LevelObject_Relic_<PalInternal>_C`;
- *  the suffix is the same internal species id used by the bundled Pal icons. */
 function effigySpeciesId(actorClass: string | null | undefined): string | undefined {
   const match = /^BP_LevelObject_Relic_(.+)_C$/.exec(actorClass ?? "");
   return match?.[1];
 }
 
-/** Build the POI pin list + per-layer counts for the active player scope. */
 export function buildPois(
   data: MapData,
   state: MapState | null,
@@ -135,22 +130,18 @@ export function buildPois(
   const players = state?.players ?? [];
   const unlockedFt = unionFlags(players, scope, (p) => p.fast_travel_unlocked);
   const foundEff = unionFlags(players, scope, (p) => p.effigies_found);
-  // `towers_defeated` is an additive MapPlayerState field (TowerData/T1). Read
-  // it through a checked guard so this degrades cleanly both before the type
-  // lands and against older save states that predate the field.
   const conqueredTowers = unionFlags(players, scope, (p) =>
     "towers_defeated" in p && Array.isArray(p.towers_defeated)
       ? p.towers_defeated
       : [],
   );
 
-  // The join is "live" only when the extractor has stamped guids onto the POIs
-  // (R1). Absent guids everywhere => degrade to counts-only + neutral pins.
   const hasFtGuids = data.fast_travel.some((p) => p.guid != null);
   const hasEffGuids = data.effigies.some((p) => p.guid != null);
   const joined = hasFtGuids || hasEffGuids;
 
   const pins: PoiPin[] = [];
+  const effigyTypeCounts = new Map<string, EffigyTypeCount>();
   let ftFound = 0;
   let effFound = 0;
 
@@ -173,6 +164,17 @@ export function buildPois(
     const found = p.guid != null && foundEff.has(p.guid);
     if (found) effFound++;
     const typed = p as typeof p & EffigyPayload;
+    const effigyType = effigyTypeKey(typed.type);
+    const name = effigyDisplayName(effigyType);
+    const stats = effigyTypeCounts.get(effigyType) ?? {
+      key: effigyType,
+      label: name.replace(/ Effigy$/, ""),
+      found: 0,
+      total: 0,
+    };
+    stats.total++;
+    if (found) stats.found++;
+    effigyTypeCounts.set(effigyType, stats);
     pins.push({
       key: `ef${i}`,
       kind: "effigy",
@@ -181,7 +183,8 @@ export function buildPois(
       y: p.y,
       found,
       known: found,
-      name: effigyDisplayName(typed.type),
+      name,
+      effigyType,
       speciesId: effigySpeciesId(typed.class),
     });
   });
@@ -214,15 +217,7 @@ export function buildPois(
     });
   });
 
-  // Syndicate towers (Map Wave 3): always `known` (major landmarks visible on
-  // the in-game map from the start, so NEVER fog-gated). `found` = conquered by
-  // a scoped player. The join is live only when a POI carries a `key` matching
-  // the save's `towers_defeated`; absent keys => neutral pins + total-only count.
   const towers = data.towers ?? [];
-  // Only towers with a `key` carry a per-player reached flag; the keyless
-  // (Feybreak-era) towers still render but can never be tracked, so they are
-  // excluded from the reached/total denominator (which could otherwise never
-  // hit 100%). They stay visible as always-not-reached landmark pins.
   const keyedTowers = towers.filter((t) => t.key != null).length;
   const hasTowerKeys = keyedTowers > 0;
   let towerFound = 0;
@@ -242,9 +237,6 @@ export function buildPois(
   });
 
   const counts: PoiCounts = {
-    // With a live join the "found" tally is the number of pak pins whose guid a
-    // scoped player has unlocked. Without guids it falls back to the raw
-    // unlocked-flag count (clamped to the pak total so it never over-reports).
     fastTravel: {
       found: hasFtGuids
         ? ftFound
@@ -257,11 +249,10 @@ export function buildPois(
         : Math.min(foundEff.size, data.effigies.length),
       total: data.effigies.length,
     },
+    effigyTypes: [...effigyTypeCounts.values()].sort((a, b) =>
+      a.label.localeCompare(b.label),
+    ),
     towers: {
-      // With keys, "found" = towers a scoped player has reached and "total" is
-      // the trackable (keyed) tower count — keyless towers are excluded so the
-      // readout can reach 100%. Without any keys, fall back to the raw
-      // reached-flag count over all towers (clamped so it never over-reports).
       found: hasTowerKeys
         ? towerFound
         : Math.min(conqueredTowers.size, towers.length),
