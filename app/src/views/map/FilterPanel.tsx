@@ -1,7 +1,6 @@
-// The map filter popover (the in-game "Filter" equivalent): one row per overlay
-// layer with a toggle and a live count, plus effigy-family filtering and the
-// "show hidden" spoiler override. MapView owns the main layer state; effigy type
-// selection is a small shared persisted map preference.
+// The map filter popover: layer toggles, effigy-family filtering, and spoiler
+// controls. MapView owns the main layer state; effigy type selection is a small
+// shared persisted map preference.
 
 import { useEffect, useState } from "react";
 import type { LayerFilters } from "./PinLayer";
@@ -47,9 +46,7 @@ function Row({
           </svg>
         )}
       </span>
-      <span
-        className={`flex-1 font-mono text-[12px] tracking-wide ${on ? "text-ink" : "text-ink-faint"}`}
-      >
+      <span className={`flex-1 font-mono text-[12px] tracking-wide ${on ? "text-ink" : "text-ink-faint"}`}>
         {label}
       </span>
       {count && (
@@ -60,6 +57,41 @@ function Row({
           {count}
         </span>
       )}
+    </button>
+  );
+}
+
+function SmallToggle({
+  on,
+  onToggle,
+  label,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      role="switch"
+      aria-checked={on}
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+    >
+      <span
+        className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
+          on ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
+        }`}
+      >
+        {on && (
+          <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
+          </svg>
+        )}
+      </span>
+      <span className={`flex-1 font-mono text-[11px] tracking-wide ${on ? "text-ink" : "text-ink-faint"}`}>
+        {label}
+      </span>
     </button>
   );
 }
@@ -94,7 +126,13 @@ export default function FilterPanel({
   const tw = counts.towers;
   const effigyTypes = counts.effigyTypes ?? [];
   const hideUnfound = filters.hideUnfoundEffigies;
-  const effigyCount = hideUnfound ? `${ef.found} found` : `${ef.found}/${ef.total}`;
+  const hideFound = filters.hideFoundEffigies ?? false;
+  const effigyCount = hideFound
+    ? `${Math.max(0, ef.total - ef.found)} remaining`
+    : hideUnfound
+      ? `${ef.found} found`
+      : `${ef.found}/${ef.total}`;
+
   const [effigySelection, setEffigySelection] = useState<EffigyTypeSelection>(
     readEffigyTypeSelection,
   );
@@ -137,6 +175,18 @@ export default function FilterPanel({
     );
   };
 
+  const toggleHideFound = () => {
+    const next = !hideFound;
+    if (next && hideUnfound) setFilter("hideUnfoundEffigies", false);
+    setFilter("hideFoundEffigies", next);
+  };
+
+  const toggleHideUnfound = () => {
+    const next = !hideUnfound;
+    if (next && hideFound) setFilter("hideFoundEffigies", false);
+    setFilter("hideUnfoundEffigies", next);
+  };
+
   return (
     <div className="absolute right-0 top-full z-20 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-line bg-panel/95 p-1.5 shadow-lg backdrop-blur">
       <div className="px-2 pb-1 pt-1 font-mono text-[10px] uppercase tracking-[0.22em] text-ink-faint">
@@ -162,121 +212,114 @@ export default function FilterPanel({
         label="Effigies"
         count={effigyCount}
         countTitle={
-          hideUnfound
-            ? "Collected (unfound hidden)"
-            : counts.joined
-              ? "Collected / total"
-              : "Collected (per-pin match unavailable)"
+          hideFound
+            ? "Uncollected effigies shown"
+            : hideUnfound
+              ? "Collected effigies shown"
+              : counts.joined
+                ? "Collected / total"
+                : "Collected (per-pin match unavailable)"
         }
-        dimCount={!counts.joined && !hideUnfound}
+        dimCount={!counts.joined && !hideUnfound && !hideFound}
       />
 
-      {effigyTypes.length > 0 && (
+      {(filters.effigies || effigyTypes.length > 0) && (
         <div className="mb-0.5 ml-3 border-l border-line-soft pl-2">
-          <div className="flex items-center gap-1 px-1 py-0.5">
-            <button
-              type="button"
-              onClick={() => setEffigyTypesOpen((open) => !open)}
-              aria-expanded={effigyTypesOpen}
-              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`shrink-0 text-ink-faint transition-transform ${effigyTypesOpen ? "rotate-90" : ""}`}
-              >
-                <path d="M4 2.5L8 6 4 9.5" />
-              </svg>
-              <span className="min-w-0 flex-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-                Effigy types
-              </span>
-              <span className="font-mono text-[9px] tabular-nums text-ink-dim">
-                {effigyTypeSummary}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => applyEffigySelection(null)}
-              className="rounded-sm px-1 py-1 font-mono text-[9px] uppercase tracking-wider text-amber hover:bg-hover hover:text-amber-bright"
-              title="Show all effigy types"
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => applyEffigySelection([])}
-              className="rounded-sm px-1 py-1 font-mono text-[9px] uppercase tracking-wider text-ink-faint hover:bg-hover hover:text-ink"
-              title="Hide all effigy types"
-            >
-              None
-            </button>
-          </div>
-
           {filters.effigies && (
-            <button
-              type="button"
-              onClick={() => setFilter("hideUnfoundEffigies", !hideUnfound)}
-              role="switch"
-              aria-checked={hideUnfound}
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
-            >
-              <span
-                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
-                  hideUnfound ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
-                }`}
-              >
-                {hideUnfound && (
-                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
-                  </svg>
-                )}
-              </span>
-              <span className={`flex-1 font-mono text-[11px] tracking-wide ${hideUnfound ? "text-ink" : "text-ink-faint"}`}>
-                Hide unfound
-              </span>
-            </button>
+            <div className="py-0.5">
+              <SmallToggle on={hideFound} onToggle={toggleHideFound} label="Hide found" />
+              <SmallToggle on={hideUnfound} onToggle={toggleHideUnfound} label="Hide unfound" />
+            </div>
           )}
 
-          {effigyTypesOpen && (
-            <div className="border-t border-line-soft pt-1">
-              {effigyTypes.map((type) => {
-                const on = effigySelection === null || effigySelection.includes(type.key);
-                return (
-                  <button
-                    key={type.key}
-                    type="button"
-                    onClick={() => toggleEffigyType(type.key)}
-                    role="switch"
-                    aria-checked={on}
-                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover"
+          {effigyTypes.length > 0 && (
+            <>
+              <div className="flex items-center gap-1 border-t border-line-soft px-1 py-0.5">
+                <button
+                  type="button"
+                  onClick={() => setEffigyTypesOpen((open) => !open)}
+                  aria-expanded={effigyTypesOpen}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+                >
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`shrink-0 text-ink-faint transition-transform ${effigyTypesOpen ? "rotate-90" : ""}`}
                   >
-                    <span
-                      className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
-                        on ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
-                      }`}
-                    >
-                      {on && (
-                        <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
-                        </svg>
-                      )}
-                    </span>
-                    <span className={`flex-1 font-mono text-[10px] tracking-wide ${on ? "text-ink" : "text-ink-faint"}`}>
-                      {type.label}
-                    </span>
-                    <span className="font-mono text-[9px] tabular-nums text-ink-faint">
-                      {hideUnfound ? `${type.found}` : `${type.found}/${type.total}`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                    <path d="M4 2.5L8 6 4 9.5" />
+                  </svg>
+                  <span className="min-w-0 flex-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+                    Effigy types
+                  </span>
+                  <span className="font-mono text-[9px] tabular-nums text-ink-dim">
+                    {effigyTypeSummary}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyEffigySelection(null)}
+                  className="rounded-sm px-1 py-1 font-mono text-[9px] uppercase tracking-wider text-amber hover:bg-hover hover:text-amber-bright"
+                  title="Show all effigy types"
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyEffigySelection([])}
+                  className="rounded-sm px-1 py-1 font-mono text-[9px] uppercase tracking-wider text-ink-faint hover:bg-hover hover:text-ink"
+                  title="Hide all effigy types"
+                >
+                  None
+                </button>
+              </div>
+
+              {effigyTypesOpen && (
+                <div className="border-t border-line-soft pt-1">
+                  {effigyTypes.map((type) => {
+                    const on = effigySelection === null || effigySelection.includes(type.key);
+                    const count = hideFound
+                      ? Math.max(0, type.total - type.found)
+                      : hideUnfound
+                        ? type.found
+                        : null;
+                    return (
+                      <button
+                        key={type.key}
+                        type="button"
+                        onClick={() => toggleEffigyType(type.key)}
+                        role="switch"
+                        aria-checked={on}
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover"
+                      >
+                        <span
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
+                            on ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
+                          }`}
+                        >
+                          {on && (
+                            <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
+                            </svg>
+                          )}
+                        </span>
+                        <span className={`flex-1 font-mono text-[10px] tracking-wide ${on ? "text-ink" : "text-ink-faint"}`}>
+                          {type.label}
+                        </span>
+                        <span className="font-mono text-[9px] tabular-nums text-ink-faint">
+                          {count == null ? `${type.found}/${type.total}` : String(count)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
