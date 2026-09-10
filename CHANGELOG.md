@@ -12,6 +12,8 @@ version is marked Unreleased.
   counts captured species even after a Pal leaves the current roster.
 - Added Pal Collection details to Progress, splitting lifetime species state
   into captured, discovered, and undiscovered lists with Pal-dex navigation.
+- Added lifetime capture statistics to Progress, including total captures,
+  top captured species, and capture counts in the captured collection list.
 
 ## [0.3.0] - 2026-09-10
 

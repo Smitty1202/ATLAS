@@ -123,6 +123,10 @@ function dexNo(item: PalCollectionItem): string {
     : "#---";
 }
 
+function formatCount(count: number): string {
+  return count.toLocaleString();
+}
+
 function filteredSpecies(
   items: PalCollectionItem[],
   query: string,
@@ -134,6 +138,66 @@ function filteredSpecies(
       item.name.toLowerCase().includes(q) ||
       String(item.paldexNo).includes(q) ||
       dexNo(item).toLowerCase().includes(q),
+  );
+}
+
+function CaptureStatsPanel({
+  collection,
+  onOpenSpecies,
+}: {
+  collection: PalCollectionProgress;
+  onOpenSpecies: (speciesId: string) => void;
+}) {
+  const mostCaptured = collection.captureStats.mostCaptured;
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(13rem,17rem)_1fr]">
+      <div className="rounded-md border border-line bg-raised/45 px-3 py-3">
+        <div className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+          Lifetime Captures
+        </div>
+        <div className="mt-2 font-mono text-[30px] font-semibold leading-none tabular-nums text-amber">
+          {formatCount(collection.captureStats.totalCaptures)}
+        </div>
+        <div className="mt-2 text-[12px] text-ink-faint">Total captured Pals</div>
+      </div>
+
+      <div className="rounded-md border border-line bg-panel px-3 py-3">
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+            Most Captured
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+            Top 10
+          </div>
+        </div>
+        {mostCaptured.length > 0 ? (
+          <ol className="grid gap-1 md:grid-cols-2">
+            {mostCaptured.map((item) => (
+              <li key={item.id}>
+                <button
+                  onClick={() => onOpenSpecies(item.id)}
+                  className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-hover focus:bg-hover"
+                >
+                  <span className="w-12 shrink-0 font-mono text-[11px] tabular-nums text-ink-faint">
+                    {dexNo(item)}
+                  </span>
+                  <span className="min-w-0 truncate text-[13px] font-medium text-ink">
+                    {item.name}
+                  </span>
+                  <span className="ml-auto shrink-0 font-mono text-[12px] font-semibold tabular-nums text-amber">
+                    {formatCount(item.captureCount)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div className="px-2.5 py-6 text-center text-[13px] text-ink-faint">
+            No captures recorded.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -155,6 +219,8 @@ function CollectionList({
   const hasQuery = query.trim() !== "";
   return (
     <div className="space-y-3">
+      <CaptureStatsPanel collection={collection} onOpenSpecies={onOpenSpecies} />
+
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="grid gap-2 sm:grid-cols-3">
           {COLLECTION_BUCKETS.map((bucket) => (
@@ -230,6 +296,11 @@ function CollectionList({
                           <span className="min-w-0 truncate text-[13px] font-medium text-ink">
                             {item.name}
                           </span>
+                          {bucket.key === "captured" && (
+                            <span className="ml-auto shrink-0 font-mono text-[11px] font-semibold tabular-nums text-amber">
+                              {formatCount(item.captureCount)}
+                            </span>
+                          )}
                         </button>
                       </li>
                     ))}

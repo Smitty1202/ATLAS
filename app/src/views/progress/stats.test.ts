@@ -292,6 +292,114 @@ test("pal collection unions lifetime data for all-player scope", () => {
   expect(allCollection.undiscovered).toEqual([]);
 });
 
+test("capture statistics total lifetime captures for selected player", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const p2Hex = "2122232425262728292a2b2c2d2e2f30";
+  const summary: SaveSummary = {
+    world_name: "Mosslight",
+    players: [
+      savePlayer(p1Hex, "Ada", { SheepBall: 4, PinkCat: 0, Penguin: 2 }),
+      savePlayer(p2Hex, "Bea", { PinkCat: 7 }),
+    ],
+    pals: [],
+    bases: [],
+    warnings: [],
+  };
+
+  const collection = buildPalCollectionProgress(summary, species, p1Hex);
+
+  expect(collection.captureStats.totalCaptures).toBe(6);
+  expect(collection.captured.map((s) => [s.id, s.captureCount])).toEqual([
+    ["SheepBall", 4],
+    ["Penguin", 2],
+  ]);
+  expect(collection.captureStats.mostCaptured.map((s) => s.id)).toEqual([
+    "SheepBall",
+    "Penguin",
+  ]);
+});
+
+test("capture statistics aggregate all-player captures by species", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const p2Hex = "2122232425262728292a2b2c2d2e2f30";
+  const summary: SaveSummary = {
+    world_name: "Mosslight",
+    players: [
+      savePlayer(p1Hex, "Ada", { SheepBall: 4, Penguin: 2 }),
+      savePlayer(p2Hex, "Bea", { SheepBall: 3, PinkCat: 7 }),
+    ],
+    pals: [],
+    bases: [],
+    warnings: [],
+  };
+
+  const collection = buildPalCollectionProgress(summary, species, "all");
+
+  expect(collection.captureStats.totalCaptures).toBe(16);
+  expect(collection.captured.map((s) => [s.id, s.captureCount])).toEqual([
+    ["SheepBall", 7],
+    ["PinkCat", 7],
+    ["Penguin", 2],
+  ]);
+  expect(
+    collection.captureStats.mostCaptured.map((s) => [s.id, s.captureCount]),
+  ).toEqual([
+    ["SheepBall", 7],
+    ["PinkCat", 7],
+    ["Penguin", 2],
+  ]);
+});
+
+test("capture statistics rank top species by count then paldex number", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const manySpecies = Array.from({ length: 12 }, (_, i) => {
+    const n = i + 1;
+    return {
+      id: `Pal${n}`,
+      name: `Pal ${String(n).padStart(2, "0")}`,
+      paldex_no: n,
+    };
+  }) as SpeciesEntry[];
+  const summary: SaveSummary = {
+    world_name: "Mosslight",
+    players: [
+      savePlayer(p1Hex, "Ada", {
+        Pal1: 1,
+        Pal2: 10,
+        Pal3: 7,
+        Pal4: 10,
+        Pal5: 8,
+        Pal6: 0,
+        Pal7: 6,
+        Pal8: 5,
+        Pal9: 4,
+        Pal10: 3,
+        Pal11: 2,
+        Pal12: 1,
+      }),
+    ],
+    pals: [],
+    bases: [],
+    warnings: [],
+  };
+
+  const collection = buildPalCollectionProgress(summary, manySpecies, p1Hex);
+
+  expect(collection.captureStats.mostCaptured).toHaveLength(10);
+  expect(collection.captureStats.mostCaptured.map((s) => s.id)).toEqual([
+    "Pal2",
+    "Pal4",
+    "Pal5",
+    "Pal3",
+    "Pal7",
+    "Pal8",
+    "Pal9",
+    "Pal10",
+    "Pal11",
+    "Pal1",
+  ]);
+});
+
 test("pal collection treats zero-count captures as not captured", () => {
   const p1Hex = "0102030405060708090a0b0c0d0e0f10";
   const summary: SaveSummary = {
@@ -307,6 +415,8 @@ test("pal collection treats zero-count captures as not captured", () => {
   const collection = buildPalCollectionProgress(summary, species, p1Hex);
 
   expect(collection.captured).toEqual([]);
+  expect(collection.captureStats.totalCaptures).toBe(0);
+  expect(collection.captureStats.mostCaptured).toEqual([]);
   expect(collection.discovered.map((s) => s.id)).toEqual(["PinkCat"]);
   expect(collection.undiscovered.map((s) => s.id)).toEqual([
     "SheepBall",

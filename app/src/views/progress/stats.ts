@@ -37,6 +37,12 @@ export interface PalCollectionItem {
   id: string;
   name: string;
   paldexNo: number;
+  captureCount: number;
+}
+
+export interface CaptureStats {
+  totalCaptures: number;
+  mostCaptured: PalCollectionItem[];
 }
 
 export interface PalCollectionProgress {
@@ -44,6 +50,7 @@ export interface PalCollectionProgress {
   captured: PalCollectionItem[];
   discovered: PalCollectionItem[];
   undiscovered: PalCollectionItem[];
+  captureStats: CaptureStats;
 }
 
 function ownerHex(pal: OwnedPal): string | null {
@@ -76,15 +83,23 @@ function scopedLifetimeSpecies(
   summary: SaveSummary,
   playerScope: string,
   speciesIds?: Set<string>,
-): { captured: Set<string>; unlocked: Set<string> } {
+): {
+  captured: Set<string>;
+  unlocked: Set<string>;
+  captureCounts: Map<string, number>;
+  totalCaptures: number;
+} {
   const captured = new Set<string>();
   const unlocked = new Set<string>();
+  const captureCounts = new Map<string, number>();
+  let totalCaptures = 0;
   for (const player of scopedPlayers(summary, playerScope)) {
     for (const entry of player.pal_capture_counts ?? []) {
-      if (
-        (entry.count ?? 0) > 0 &&
-        (!speciesIds || speciesIds.has(entry.species_id))
-      ) {
+      const count = entry.count ?? 0;
+      if (count > 0 && (!speciesIds || speciesIds.has(entry.species_id))) {
+        const current = captureCounts.get(entry.species_id) ?? 0;
+        captureCounts.set(entry.species_id, current + count);
+        totalCaptures += count;
         captured.add(entry.species_id);
       }
     }
@@ -94,7 +109,7 @@ function scopedLifetimeSpecies(
       }
     }
   }
-  return { captured, unlocked };
+  return { captured, unlocked, captureCounts, totalCaptures };
 }
 
 function scopedBaseCount(summary: SaveSummary, playerScope: string): number {
@@ -162,6 +177,10 @@ export function buildPalCollectionProgress(
     captured: [],
     discovered: [],
     undiscovered: [],
+    captureStats: {
+      totalCaptures: lifetime.totalCaptures,
+      mostCaptured: [],
+    },
   };
   const rows = [...species].sort(
     (a, b) =>
@@ -175,6 +194,7 @@ export function buildPalCollectionProgress(
       id: sp.id,
       name: sp.name,
       paldexNo: sp.paldex_no,
+      captureCount: lifetime.captureCounts.get(sp.id) ?? 0,
     };
     if (lifetime.captured.has(sp.id)) {
       out.captured.push(item);
@@ -184,6 +204,16 @@ export function buildPalCollectionProgress(
       out.undiscovered.push(item);
     }
   }
+
+  out.captureStats.mostCaptured = [...out.captured]
+    .sort(
+      (a, b) =>
+        b.captureCount - a.captureCount ||
+        (a.paldexNo ?? Number.MAX_SAFE_INTEGER) -
+          (b.paldexNo ?? Number.MAX_SAFE_INTEGER) ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, 10);
 
   return out;
 }
