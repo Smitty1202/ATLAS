@@ -31,7 +31,7 @@ const UPDATE_MANIFEST_URL: Option<&str> =
     Some("https://api.github.com/repos/Smitty1202/ATLAS/releases/latest");
 
 /// Standards-safe HTTP User-Agent for the public GitHub Releases probe.
-const UPDATE_USER_AGENT: &str = "Smittys-ATLAS/0.2.0";
+const UPDATE_USER_AGENT: &str = "Smittys-ATLAS/0.3.0";
 
 /// Result of an update check. `status` is one of
 /// `"disabled" | "up_to_date" | "update_available" | "error"`. The optional
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn user_agent_identifies_atlas() {
-        assert_eq!(UPDATE_USER_AGENT, "Smittys-ATLAS/0.2.0");
+        assert_eq!(UPDATE_USER_AGENT, "Smittys-ATLAS/0.3.0");
     }
 }
 
