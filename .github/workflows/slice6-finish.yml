@@ -36,9 +36,9 @@ jobs:
               with open(p, 'w', encoding='utf-8', newline='\n') as f:
                   f.write(text)
 
+          # Finish the interrupted MapView focus handoff.
           map_path = 'app/src/views/map/MapView.tsx'
           text = read(map_path)
-
           apply_start = text.index('const applyMapFocus')
           set_filters = text.index('setFilters((f) => ({', apply_start)
           line_start = text.rfind('\n', 0, set_filters) + 1
@@ -83,8 +83,6 @@ jobs:
             viewport.w,
             viewport.h,
           ]);'''
-          # The YAML block indentation is stripped before this Python runs; normalize
-          # this generated replacement to the file's ordinary two-space indentation.
           effect = '\n'.join(line[10:] if line.startswith('          ') else line for line in effect.splitlines())
           text = text[:effect_start] + effect + text[effect_end:]
 
@@ -98,16 +96,166 @@ jobs:
           )
           write(map_path, text)
 
-          test_path = 'app/src/views/map/PinLayer.test.ts'
-          tests = '''import { expect, test } from "bun:test";
+          # Move the pure visibility selector out of PinLayer so Bun tests do not
+          # pull in the UI/Tauri module graph.
+          pin_path = 'app/src/views/map/PinLayer.tsx'
+          pin = read(pin_path)
+          pin = pin.replace(
+              'import { isRevealed, type FogMask } from "./fog";',
+              'import type { FogMask } from "./fog";',
+              1,
+          )
+          pin = pin.replace(
+              'import type { PoiPin } from "./pins";',
+              'import type { PoiPin } from "./pins";\nimport { resolveVisiblePois } from "./pin-visibility";',
+              1,
+          )
+          pin = pin.replace('  effigyTypeIsVisible,\n', '', 1)
+          pin = pin.replace('const CULL_MARGIN = 200;\n', '', 1)
+          selector_start = pin.index('export interface VisiblePoi')
+          selector_end = pin.index('const DIM_STYLE: CSSProperties', selector_start)
+          pin = pin[:selector_start] + pin[selector_end:]
+          write(pin_path, pin)
+
+          visibility_path = 'app/src/views/map/pin-visibility.ts'
+          write(visibility_path, '''import { worldToPx, type MapEntry } from "../../lib/map-coords";
+          import { effigyTypeIsVisible, type EffigyTypeSelection } from "./effigy-filter";
+          import { isRevealed, type FogMask } from "./fog";
+          import type { PoiPin } from "./pins";
+
+          const CULL_MARGIN = 200;
+
+          export interface PoiVisibilityFilters {
+            fastTravel: boolean;
+            alpha: boolean;
+            effigies: boolean;
+            bounties: boolean;
+            towers: boolean;
+            hideUnfoundEffigies: boolean;
+            hideFoundEffigies?: boolean;
+          }
+
+          export interface VisiblePoi {
+            pin: PoiPin;
+            left: number;
+            top: number;
+            focused: boolean;
+          }
+
+          export interface ResolveVisiblePoisOptions {
+            entry: MapEntry;
+            layer: string;
+            k: number;
+            tx: number;
+            ty: number;
+            vw: number;
+            vh: number;
+            pois: PoiPin[];
+            filters: PoiVisibilityFilters;
+            effigySelection: EffigyTypeSelection;
+            fog: FogMask | null;
+            fogOn: boolean;
+            showHidden: boolean;
+            focusedPoiId?: string | null;
+          }
+
+          export function poiFocusId(pin: PoiPin): string {
+            return `${pin.kind}:${pin.key}`;
+          }
+
+          function pinHiddenByFilters(
+            pin: PoiPin,
+            filters: PoiVisibilityFilters,
+            effigySelection: EffigyTypeSelection,
+          ): boolean {
+            if (pin.kind === "fast_travel" && !filters.fastTravel) return true;
+            if (pin.kind === "alpha" && !filters.alpha) return true;
+            if (pin.kind === "effigy" && !filters.effigies) return true;
+            if (
+              pin.kind === "effigy" &&
+              !effigyTypeIsVisible(effigySelection, pin.effigyType)
+            )
+              return true;
+            if (pin.kind === "effigy" && filters.hideUnfoundEffigies && !pin.found)
+              return true;
+            if (pin.kind === "effigy" && filters.hideFoundEffigies && pin.found)
+              return true;
+            if (pin.kind === "bounty" && !filters.bounties) return true;
+            return pin.kind === "tower" && !filters.towers;
+          }
+
+          function pinHiddenByFog({
+            entry,
+            pin,
+            fog,
+            fogOn,
+            showHidden,
+          }: {
+            entry: MapEntry;
+            pin: PoiPin;
+            fog: FogMask | null;
+            fogOn: boolean;
+            showHidden: boolean;
+          }): boolean {
+            if (!fogOn || !fog || pin.known || showHidden) return false;
+            const [W, H] = entry.px;
+            const [u, v] = worldToPx(entry, pin.x, pin.y);
+            return !isRevealed(fog, u / W, v / H);
+          }
+
+          export function resolveVisiblePois({
+            entry,
+            layer,
+            k,
+            tx,
+            ty,
+            vw,
+            vh,
+            pois,
+            filters,
+            effigySelection,
+            fog,
+            fogOn,
+            showHidden,
+            focusedPoiId = null,
+          }: ResolveVisiblePoisOptions): VisiblePoi[] {
+            if (k <= 0) return [];
+            const minU = (-tx - CULL_MARGIN) / k;
+            const minV = (-ty - CULL_MARGIN) / k;
+            const maxU = (vw - tx + CULL_MARGIN) / k;
+            const maxV = (vh - ty + CULL_MARGIN) / k;
+            const out: VisiblePoi[] = [];
+            const focusedOut: VisiblePoi[] = [];
+
+            for (const pin of pois) {
+              if (pin.map !== layer) continue;
+              const focused = focusedPoiId === poiFocusId(pin);
+              if (!focused && pinHiddenByFilters(pin, filters, effigySelection)) continue;
+
+              const [u, v] = worldToPx(entry, pin.x, pin.y);
+              if (u < minU || u > maxU || v < minV || v > maxV) continue;
+              if (!focused && pinHiddenByFog({ entry, pin, fog, fogOn, showHidden }))
+                continue;
+
+              const visible = { pin, left: u * k, top: v * k, focused };
+              if (focused) focusedOut.push(visible);
+              else out.push(visible);
+            }
+
+            return [...out, ...focusedOut];
+          }
+          '''.replace('          ', ''))
+
+          test_path = 'app/src/views/map/pin-visibility.test.ts'
+          write(test_path, '''import { expect, test } from "bun:test";
           import type { MapEntry } from "../../lib/map-coords";
           import type { FogMask } from "./fog";
           import type { PoiPin } from "./pins";
           import {
             poiFocusId,
             resolveVisiblePois,
-            type LayerFilters,
-          } from "./PinLayer";
+            type PoiVisibilityFilters,
+          } from "./pin-visibility";
 
           const entry: MapEntry = {
             image: "",
@@ -118,16 +266,12 @@ jobs:
             world_to_px: "test",
           };
 
-          const baseFilters: LayerFilters = {
+          const baseFilters: PoiVisibilityFilters = {
             fastTravel: true,
             alpha: true,
             effigies: true,
             bounties: true,
             towers: true,
-            spawns: true,
-            players: true,
-            markers: true,
-            bases: true,
             hideUnfoundEffigies: false,
             hideFoundEffigies: false,
           };
@@ -160,7 +304,7 @@ jobs:
           function visible(
             pois: PoiPin[],
             focusedPoiId: string | null,
-            filters: LayerFilters = baseFilters,
+            filters: PoiVisibilityFilters = baseFilters,
             effigySelection: string[] | null = null,
           ) {
             return resolveVisiblePois({
@@ -185,9 +329,7 @@ jobs:
             const target = pin("target");
             const neighbor = pin("neighbor", "fast_travel", { x: 52, y: 52 });
             const filters = { ...baseFilters, fastTravel: false };
-
             const result = visible([target, neighbor], poiFocusId(target), filters);
-
             expect(result).toHaveLength(1);
             expect(result[0]?.pin.key).toBe("target");
             expect(result[0]?.focused).toBe(true);
@@ -196,9 +338,7 @@ jobs:
           test("focused POI bypasses fog without revealing a neighboring POI", () => {
             const target = pin("target");
             const neighbor = pin("neighbor", "fast_travel", { x: 52, y: 52 });
-
             const result = visible([target, neighbor], poiFocusId(target));
-
             expect(result.map((row) => row.pin.key)).toEqual(["target"]);
             expect(result[0]?.focused).toBe(true);
           });
@@ -211,14 +351,7 @@ jobs:
               effigyType: "CapturePower",
             });
             const filters = { ...baseFilters, hideUnfoundEffigies: true };
-
-            const result = visible(
-              [target, sibling],
-              poiFocusId(target),
-              filters,
-              [],
-            );
-
+            const result = visible([target, sibling], poiFocusId(target), filters, []);
             expect(result.map((row) => row.pin.key)).toEqual(["target"]);
             expect(result[0]?.focused).toBe(true);
           });
@@ -227,9 +360,7 @@ jobs:
             const target = pin("target");
             expect(visible([target], null)).toEqual([]);
           });
-          '''
-          tests = '\n'.join(line[10:] if line.startswith('          ') else line for line in tests.splitlines()) + '\n'
-          write(test_path, tests)
+          '''.replace('          ', ''))
 
           ignore_path = '.gitignore'
           ignore = read(ignore_path)
