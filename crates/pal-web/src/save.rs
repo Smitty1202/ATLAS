@@ -15,6 +15,15 @@ use serde::Serialize;
 pub struct PlayerRef {
     pub uid: String,
     pub name: String,
+    pub pal_capture_counts: Vec<PalCaptureCountRef>,
+    pub paldeck_unlocked: Vec<String>,
+}
+
+/// Lifetime capture count for one normalized Pal species.
+#[derive(Debug, Clone, Serialize)]
+pub struct PalCaptureCountRef {
+    pub species_id: String,
+    pub count: u32,
 }
 
 /// A guild-owned base camp, mapped to its worker pal-container and the guild's
@@ -61,6 +70,15 @@ pub fn to_summary(save: &pal_save::SaveData) -> SaveSummary {
             .map(|p| PlayerRef {
                 uid: guid_str(&p.uid),
                 name: p.name.clone(),
+                pal_capture_counts: p
+                    .pal_capture_counts
+                    .iter()
+                    .map(|c| PalCaptureCountRef {
+                        species_id: c.species_id.clone(),
+                        count: c.count,
+                    })
+                    .collect(),
+                paldeck_unlocked: p.paldeck_unlocked.clone(),
             })
             .collect(),
         bases: save
@@ -75,5 +93,40 @@ pub fn to_summary(save: &pal_save::SaveData) -> SaveSummary {
             .collect(),
         pals: save.pals.clone(),
         warnings: save.warnings.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_surfaces_player_capture_progress() {
+        let save = pal_save::SaveData {
+            world_name: Some("Mosslight".to_string()),
+            players: vec![pal_save::PlayerInfo {
+                uid: [1u8; 16],
+                name: "Ada".to_string(),
+                pal_capture_counts: vec![pal_save::PalCaptureCount {
+                    species_id: "Penguin".to_string(),
+                    count: 3,
+                }],
+                paldeck_unlocked: vec!["Penguin".to_string()],
+            }],
+            ..Default::default()
+        };
+
+        let summary = to_summary(&save);
+
+        assert_eq!(summary.players[0].uid, "01010101010101010101010101010101");
+        assert_eq!(
+            summary.players[0].pal_capture_counts[0].species_id,
+            "Penguin"
+        );
+        assert_eq!(summary.players[0].pal_capture_counts[0].count, 3);
+        assert_eq!(
+            summary.players[0].paldeck_unlocked,
+            vec!["Penguin".to_string()]
+        );
     }
 }

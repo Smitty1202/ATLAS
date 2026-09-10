@@ -20,6 +20,15 @@ use tauri::{AppHandle, Emitter, State};
 pub struct PlayerRef {
     pub uid: String,
     pub name: String,
+    pub pal_capture_counts: Vec<PalCaptureCountRef>,
+    pub paldeck_unlocked: Vec<String>,
+}
+
+/// Lifetime capture count for one normalized Pal species.
+#[derive(Debug, Clone, Serialize)]
+pub struct PalCaptureCountRef {
+    pub species_id: String,
+    pub count: u32,
 }
 
 /// A guild-owned base camp, mapped to its worker pal-container and the guild's
@@ -61,6 +70,15 @@ pub(crate) fn to_summary(save: pal_save::SaveData) -> SaveSummary {
             .map(|p| PlayerRef {
                 uid: guid_str(&p.uid),
                 name: p.name.clone(),
+                pal_capture_counts: p
+                    .pal_capture_counts
+                    .iter()
+                    .map(|c| PalCaptureCountRef {
+                        species_id: c.species_id.clone(),
+                        count: c.count,
+                    })
+                    .collect(),
+                paldeck_unlocked: p.paldeck_unlocked.clone(),
             })
             .collect(),
         bases: save

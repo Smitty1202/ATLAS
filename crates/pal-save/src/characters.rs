@@ -4,14 +4,14 @@
 //! `rawdata/character.py`: each `CharacterSaveParameterMap` value's `RawData`
 //! is `SaveParameter` properties, then 4 unknown bytes, then a group-id guid.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use pal_data::types::{ContainerKind, Gender, Guid, IvSet, OwnedPal};
 use pal_data::GameData;
 
 use crate::archive::Reader;
 use crate::gvas::{self, find, GvasHeader, Value};
-use crate::SaveError;
+use crate::{PalCaptureCount, SaveError};
 
 /// A player identity discovered in the level save.
 #[derive(Debug, Clone)]
@@ -58,6 +58,10 @@ pub struct PlayerContainers {
     pub party: Option<Guid>,
     /// `PalStorageContainerId` — the palbox.
     pub palbox: Option<Guid>,
+    /// `RecordData.PalCaptureCount` keyed by normalized base species id.
+    pub pal_capture_counts: Vec<PalCaptureCount>,
+    /// `RecordData.PaldeckUnlockFlag` true keys, normalized to base species id.
+    pub paldeck_unlocked: Vec<String>,
 }
 
 enum Entry {
@@ -210,7 +214,8 @@ fn build_pal(param: &[(String, Value)], instance_id: Guid) -> Result<OwnedPal, S
     let raw_char_id = find(param, "CharacterID")
         .and_then(Value::as_str)
         .ok_or_else(|| SaveError::Gvas("pal missing CharacterID".into()))?;
-    let (character_id, is_boss) = strip_species_prefix(raw_char_id);
+    let (character_id, is_boss) =
+        strip_species_prefix(strip_character_enum_prefix(raw_char_id.trim()));
 
     let gender = find(param, "Gender")
         .and_then(Value::as_str)
@@ -482,6 +487,26 @@ fn strip_species_prefix(id: &str) -> (String, bool) {
     (id.to_string(), false)
 }
 
+fn strip_character_enum_prefix(id: &str) -> &str {
+    for prefix in ["EPalCharacterID::", "EPalID::", "EPalMonsterID::"] {
+        if let Some(stripped) = id.strip_prefix(prefix) {
+            return stripped;
+        }
+    }
+    id
+}
+
+/// Normalize a save-side character id into ATLAS's canonical species key:
+/// enum prefix removed, boss/predator/gym wrapper removed, and pack casing
+/// restored when the species exists.
+pub fn normalize_character_id(id: &str) -> String {
+    let raw = strip_character_enum_prefix(id.trim());
+    let (base, _) = strip_species_prefix(raw);
+    GameData::get()
+        .species_by_id(&base)
+        .map_or(base, |s| s.internal_name.clone())
+}
+
 /// Strip the `EPalWazaID::` enum prefix from an equipped-waza id, leaving the
 /// internal skill name (e.g. `EPalWazaID::FireBall` -> `FireBall`). A proper
 /// skill-name DB is out of scope; the cleaned id is shown as a chip.
@@ -543,10 +568,66 @@ fn parse_player_body(r: &mut Reader) -> Result<PlayerContainers, SaveError> {
                     _ => {}
                 }
             }
+            "RecordData" if type_name == "StructProperty" => {
+                let v = gvas::read_property(r, &type_name, size)?;
+                if let Some(props) = v.as_props() {
+                    fill_player_record(&mut pc, props);
+                }
+            }
             _ => gvas::skip_property(r, &type_name, size)?,
         }
     }
     Ok(pc)
+}
+
+fn fill_player_record(pc: &mut PlayerContainers, props: &[(String, Value)]) {
+    pc.pal_capture_counts = pal_capture_counts(props);
+    pc.paldeck_unlocked = paldeck_unlocked(props);
+}
+
+fn pal_capture_counts(props: &[(String, Value)]) -> Vec<PalCaptureCount> {
+    let mut counts = BTreeMap::<String, u32>::new();
+    let Some(entries) = find(props, "PalCaptureCount").and_then(Value::as_map) else {
+        return Vec::new();
+    };
+    for (key, value) in entries {
+        let Some(species_id) = normalized_record_species(key) else {
+            continue;
+        };
+        let count = value.as_i32().unwrap_or(0);
+        if count <= 0 {
+            continue;
+        }
+        counts
+            .entry(species_id)
+            .and_modify(|current| *current = current.saturating_add(count as u32))
+            .or_insert(count as u32);
+    }
+    counts
+        .into_iter()
+        .map(|(species_id, count)| PalCaptureCount { species_id, count })
+        .collect()
+}
+
+fn paldeck_unlocked(props: &[(String, Value)]) -> Vec<String> {
+    let mut unlocked = BTreeSet::<String>::new();
+    let Some(entries) = find(props, "PaldeckUnlockFlag").and_then(Value::as_map) else {
+        return Vec::new();
+    };
+    for (key, value) in entries {
+        if !value.as_bool().unwrap_or(false) {
+            continue;
+        }
+        if let Some(species_id) = normalized_record_species(key) {
+            unlocked.insert(species_id);
+        }
+    }
+    unlocked.into_iter().collect()
+}
+
+fn normalized_record_species(key: &Value) -> Option<String> {
+    let species_id = normalize_character_id(key.as_str()?);
+    (!species_id.is_empty() && !species_id.eq_ignore_ascii_case("none")).then_some(species_id)
 }
 
 /// A `PalContainerId` struct wraps the container guid in an `ID` field.
@@ -715,7 +796,6 @@ fn dimensional_pal(elem: &Value) -> Result<Option<OwnedPal>, SaveError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compress::decompress_sav;
 
     /// Synthetic: extraction digs MapObjectId -> ConcreteModel -> ModuleMap ->
     /// ::CharacterContainer module RawData -> leading guid, routing cages and
@@ -772,5 +852,69 @@ mod tests {
         assert_eq!(stars(Some(1)), 0, "Rank 1 -> 0 stars");
         assert_eq!(stars(Some(2)), 1, "Rank 2 -> 1 star");
         assert_eq!(stars(Some(5)), 4, "Rank 5 -> 4 stars");
+    }
+
+    fn record_map_int(entries: &[(&str, i32)]) -> Value {
+        Value::Map(
+            entries
+                .iter()
+                .map(|(key, value)| (Value::Name((*key).to_string()), Value::Int(*value)))
+                .collect(),
+        )
+    }
+
+    fn record_map_bool(entries: &[(&str, bool)]) -> Value {
+        Value::Map(
+            entries
+                .iter()
+                .map(|(key, value)| (Value::Name((*key).to_string()), Value::Bool(*value)))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn pal_capture_count_normalizes_and_sums_positive_species() {
+        let props = vec![(
+            "PalCaptureCount".to_string(),
+            record_map_int(&[
+                ("BOSS_GhostAnglerFish", 2),
+                ("EPalCharacterID::GhostAnglerfish", 3),
+                ("Predator_Penguin", 1),
+                ("PinkCat", 0),
+                ("None", 9),
+            ]),
+        )];
+
+        assert_eq!(
+            pal_capture_counts(&props),
+            vec![
+                PalCaptureCount {
+                    species_id: "GhostAnglerfish".to_string(),
+                    count: 5,
+                },
+                PalCaptureCount {
+                    species_id: "Penguin".to_string(),
+                    count: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn paldeck_unlock_flag_normalizes_true_species() {
+        let props = vec![(
+            "PaldeckUnlockFlag".to_string(),
+            record_map_bool(&[
+                ("EPalCharacterID::GhostAnglerFish", true),
+                ("Gym_PinkCat", true),
+                ("SheepBall", false),
+                ("None", true),
+            ]),
+        )];
+
+        assert_eq!(
+            paldeck_unlocked(&props),
+            vec!["GhostAnglerfish".to_string(), "PinkCat".to_string()]
+        );
     }
 }

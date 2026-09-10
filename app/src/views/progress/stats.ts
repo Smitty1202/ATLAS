@@ -3,6 +3,7 @@ import type { MapData } from "../../lib/map-coords";
 import type {
   MapState,
   OwnedPal,
+  PlayerRef,
   SaveSummary,
   SpeciesEntry,
 } from "../../lib/types";
@@ -42,6 +43,28 @@ function scopedOwnedPals(summary: SaveSummary, playerScope: string): OwnedPal[] 
   return summary.pals.filter((pal) => inScope(pal, playerScope));
 }
 
+function scopedPlayers(summary: SaveSummary, playerScope: string): PlayerRef[] {
+  return playerScope === "all"
+    ? summary.players
+    : summary.players.filter((player) => player.uid === playerScope);
+}
+
+function scopedCapturedSpecies(
+  summary: SaveSummary,
+  speciesIds: Set<string>,
+  playerScope: string,
+): Set<string> {
+  const captured = new Set<string>();
+  for (const player of scopedPlayers(summary, playerScope)) {
+    for (const entry of player.pal_capture_counts ?? []) {
+      if ((entry.count ?? 0) > 0 && speciesIds.has(entry.species_id)) {
+        captured.add(entry.species_id);
+      }
+    }
+  }
+  return captured;
+}
+
 function scopedBaseCount(summary: SaveSummary, playerScope: string): number {
   const bases = summary.bases ?? [];
   if (bases.length === 0) {
@@ -75,7 +98,7 @@ export function buildProgressStats(
   const scopedPals = scopedOwnedPals(summary, playerScope).filter(
     (pal) => !isHuman(pal) && speciesIds.has(pal.character_id),
   );
-  const captured = new Set(scopedPals.map((pal) => pal.character_id));
+  const captured = scopedCapturedSpecies(summary, speciesIds, playerScope);
   const { counts } = buildPois(mapData, mapState, playerScope);
 
   return {

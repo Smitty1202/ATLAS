@@ -22,7 +22,7 @@ pub use wgs::{
 };
 pub use worldoption::{parse_world_options_sav, WorldOptions};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use pal_data::types::{ContainerKind, Guid, OwnedPal};
@@ -47,6 +47,16 @@ pub enum SaveError {
 pub struct PlayerInfo {
     pub uid: Guid,
     pub name: String,
+    pub pal_capture_counts: Vec<PalCaptureCount>,
+    pub paldeck_unlocked: Vec<String>,
+}
+
+/// Lifetime capture count for a Pal species, recovered from a player's
+/// `RecordData.PalCaptureCount`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PalCaptureCount {
+    pub species_id: String,
+    pub count: u32,
 }
 
 /// Base-camp ownership: one guild-owned base, mapped to its physical worker
@@ -140,11 +150,15 @@ pub fn read_save_from_parts(
     // (`parsed.cage_containers` / `parsed.global_containers`).
     let mut party: HashSet<Guid> = HashSet::new();
     let mut palbox: HashSet<Guid> = HashSet::new();
+    let mut player_records: HashMap<Guid, characters::PlayerContainers> = HashMap::new();
     for (label, bytes) in player_saves {
         match compress::decompress_sav(bytes).and_then(|b| characters::parse_player_save(&b)) {
             Ok(pc) => {
                 party.extend(pc.party);
                 palbox.extend(pc.palbox);
+                if let Some(uid) = pc.player_uid {
+                    player_records.insert(uid, pc);
+                }
             }
             Err(e) => warnings.push(format!("player save {label}: {e}")),
         }
@@ -197,7 +211,7 @@ pub fn read_save_from_parts(
 
     Ok(SaveData {
         world_name,
-        players: to_player_infos(&parsed.players),
+        players: to_player_infos(&parsed.players, &player_records),
         pals: parsed.pals,
         bases,
         warnings,
@@ -217,6 +231,7 @@ pub fn read_level_sav(path: impl AsRef<Path>) -> Result<SaveData, SaveError> {
 pub fn read_level_sav_from_blob(blob: &[u8]) -> Result<SaveData, SaveError> {
     let mut warnings = Vec::new();
     let parsed = characters::parse_level(blob, &mut warnings)?;
+    let player_records = HashMap::new();
     let bases = build_bases(
         &parsed.guilds,
         &parsed.base_id_to_container,
@@ -224,7 +239,7 @@ pub fn read_level_sav_from_blob(blob: &[u8]) -> Result<SaveData, SaveError> {
     );
     Ok(SaveData {
         world_name: None,
-        players: to_player_infos(&parsed.players),
+        players: to_player_infos(&parsed.players, &player_records),
         pals: parsed.pals,
         bases,
         warnings,
@@ -262,12 +277,24 @@ fn build_bases(
     bases
 }
 
-fn to_player_infos(entries: &[characters::PlayerEntry]) -> Vec<PlayerInfo> {
+fn to_player_infos(
+    entries: &[characters::PlayerEntry],
+    player_records: &HashMap<Guid, characters::PlayerContainers>,
+) -> Vec<PlayerInfo> {
     entries
         .iter()
-        .map(|p| PlayerInfo {
-            uid: p.uid,
-            name: p.name.clone(),
+        .map(|p| {
+            let record = player_records.get(&p.uid);
+            PlayerInfo {
+                uid: p.uid,
+                name: p.name.clone(),
+                pal_capture_counts: record
+                    .map(|r| r.pal_capture_counts.clone())
+                    .unwrap_or_default(),
+                paldeck_unlocked: record
+                    .map(|r| r.paldeck_unlocked.clone())
+                    .unwrap_or_default(),
+            }
         })
         .collect()
 }
@@ -375,5 +402,42 @@ mod tests {
         assert!(matches!(f(&mk(4)), ContainerKind::ViewingCage));
         assert!(matches!(f(&mk(5)), ContainerKind::GlobalPalStorage));
         assert!(matches!(f(&mk(9)), ContainerKind::Unknown));
+    }
+
+    #[test]
+    fn player_infos_join_capture_data_by_uid() {
+        let ada_uid = [1u8; 16];
+        let bea_uid = [2u8; 16];
+        let entries = vec![
+            characters::PlayerEntry {
+                uid: ada_uid,
+                name: "Ada".to_string(),
+            },
+            characters::PlayerEntry {
+                uid: bea_uid,
+                name: "Bea".to_string(),
+            },
+        ];
+        let mut records = HashMap::new();
+        records.insert(
+            ada_uid,
+            characters::PlayerContainers {
+                player_uid: Some(ada_uid),
+                pal_capture_counts: vec![PalCaptureCount {
+                    species_id: "Penguin".to_string(),
+                    count: 2,
+                }],
+                paldeck_unlocked: vec!["Penguin".to_string()],
+                ..Default::default()
+            },
+        );
+
+        let players = to_player_infos(&entries, &records);
+
+        assert_eq!(players[0].pal_capture_counts[0].species_id, "Penguin");
+        assert_eq!(players[0].pal_capture_counts[0].count, 2);
+        assert_eq!(players[0].paldeck_unlocked, vec!["Penguin".to_string()]);
+        assert!(players[1].pal_capture_counts.is_empty());
+        assert!(players[1].paldeck_unlocked.is_empty());
     }
 }

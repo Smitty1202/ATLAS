@@ -5,6 +5,7 @@ import type {
   MapPlayerState,
   MapState,
   OwnedPal,
+  PlayerRef,
   SaveSummary,
   SpeciesEntry,
 } from "../../lib/types";
@@ -58,6 +59,23 @@ function player(uid: string, flags: Partial<MapPlayerState>): MapPlayerState {
   };
 }
 
+function savePlayer(
+  uid: string,
+  name: string,
+  captures: Record<string, number>,
+  paldeckUnlocked = Object.keys(captures),
+): PlayerRef {
+  return {
+    uid,
+    name,
+    pal_capture_counts: Object.entries(captures).map(([species_id, count]) => ({
+      species_id,
+      count,
+    })),
+    paldeck_unlocked: paldeckUnlocked,
+  };
+}
+
 const species: SpeciesEntry[] = [
   { id: "SheepBall", name: "Lamball" },
   { id: "PinkCat", name: "Cattiva" },
@@ -86,7 +104,7 @@ const mapData: MapData = {
   ],
 };
 
-test("progress stats honor player scope, exclude humans, and reuse map POI joins", () => {
+test("progress stats use lifetime captures for player scope while owned pals stay current", () => {
   const p1 = guid(1);
   const p2 = guid(33);
   const p1Hex = "0102030405060708090a0b0c0d0e0f10";
@@ -94,8 +112,8 @@ test("progress stats honor player scope, exclude humans, and reuse map POI joins
   const summary: SaveSummary = {
     world_name: "Mosslight",
     players: [
-      { uid: p1Hex, name: "Ada" },
-      { uid: p2Hex, name: "Bea" },
+      savePlayer(p1Hex, "Ada", { SheepBall: 4, Penguin: 1, PinkCat: 0 }),
+      savePlayer(p2Hex, "Bea", { PinkCat: 2 }),
     ],
     pals: [
       pal("SheepBall", p1),
@@ -144,7 +162,7 @@ test("progress stats honor player scope, exclude humans, and reuse map POI joins
   expect(stats.playerCount).toBe(2);
   expect(stats.baseCount).toBe(1);
   expect(stats.ownedPalCount).toBe(1);
-  expect(stats.capturedSpecies).toEqual({ found: 1, total: 3 });
+  expect(stats.capturedSpecies).toEqual({ found: 2, total: 3 });
   expect(stats.fastTravel).toEqual({ found: 1, total: 2 });
   expect(stats.effigies).toEqual({ found: 1, total: 2 });
   expect(stats.fieldBosses).toEqual({ found: 1, total: 1, joined: true });
@@ -152,7 +170,7 @@ test("progress stats honor player scope, exclude humans, and reuse map POI joins
   expect(stats.towerRegions).toEqual({ found: 1, total: 1, joined: true });
 });
 
-test("all-player progress unions map flags and species ownership", () => {
+test("all-player progress unions lifetime captures and map flags", () => {
   const p1 = guid(1);
   const p2 = guid(33);
   const p1Hex = "0102030405060708090a0b0c0d0e0f10";
@@ -160,8 +178,8 @@ test("all-player progress unions map flags and species ownership", () => {
   const summary: SaveSummary = {
     world_name: "Mosslight",
     players: [
-      { uid: p1Hex, name: "Ada" },
-      { uid: p2Hex, name: "Bea" },
+      savePlayer(p1Hex, "Ada", { SheepBall: 4, Penguin: 1 }),
+      savePlayer(p2Hex, "Bea", { PinkCat: 2, SheepBall: 1 }),
     ],
     pals: [
       pal("SheepBall", p1),
@@ -207,7 +225,7 @@ test("all-player progress unions map flags and species ownership", () => {
 
   expect(stats.baseCount).toBe(2);
   expect(stats.ownedPalCount).toBe(2);
-  expect(stats.capturedSpecies).toEqual({ found: 2, total: 3 });
+  expect(stats.capturedSpecies).toEqual({ found: 3, total: 3 });
   expect(stats.fastTravel).toEqual({ found: 2, total: 2 });
   expect(stats.effigies).toEqual({ found: 2, total: 2 });
   expect(stats.fieldBosses).toEqual({ found: 1, total: 1, joined: true });

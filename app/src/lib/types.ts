@@ -62,9 +62,16 @@ export function isAlpha(pal: Pick<OwnedPal, "is_boss" | "is_lucky">): boolean {
   return pal.is_boss || pal.is_lucky;
 }
 
+export interface PalCaptureCount {
+  species_id: string;
+  count: number;
+}
+
 export interface PlayerRef {
   uid: string;
   name: string;
+  pal_capture_counts: PalCaptureCount[];
+  paldeck_unlocked: string[];
 }
 
 /**
