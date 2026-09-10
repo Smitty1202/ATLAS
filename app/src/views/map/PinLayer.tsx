@@ -242,20 +242,26 @@ function PinTypeIcon({
     );
   }
   if (pin.kind === "effigy") {
-    // Real green Lifmunk statuette (colored art) on a chip: unfound = full color
-    // + faint green glow (actionable); found = grayscale + dimmed, NO badge (the
-    // dimming + tooltip carry the state; a ✓ badge read as "the icon is a check").
+    // Legacy Lifmunk markers keep the extracted Lifmunk statuette. Modern typed
+    // effigies use the bundled Pal portrait identified by their actor class so
+    // different effigy families are visually distinct even before dedicated
+    // per-item effigy artwork is extracted.
     const entry = icons?.effigy ?? null;
+    const modernSrc = pin.speciesId ? palIconUrl(pin.speciesId) : null;
+    const effigyName = pin.name ?? "Effigy";
     return (
       <GlyphChip
-        src={entry ? iconUrl(entry) : fallbackIcon("effigy", pin.found ? DIM : GREEN)}
-        mono={isMonoIcon(icons, "effigy")}
+        src={
+          modernSrc ??
+          (entry ? iconUrl(entry) : fallbackIcon("effigy", pin.found ? DIM : GREEN))
+        }
+        mono={modernSrc ? false : isMonoIcon(icons, "effigy")}
         tint={GREEN}
         size={ALPHA_SIZE}
         grayscale={pin.found}
         dim={pin.found ? 0.45 : 1}
         glow={pin.found ? undefined : GREEN}
-        title={pin.found ? "Lifmunk Effigy · collected" : "Lifmunk Effigy"}
+        title={pin.found ? `${effigyName} · collected` : effigyName}
       />
     );
   }

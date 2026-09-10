@@ -35,11 +35,11 @@ export interface PoiPin {
   y: number;
   found: boolean;
   known: boolean;
-  /** Alpha only: base species id (for the portrait + dex cross-link). */
+  /** Alpha or typed-effigy Pal internal species id. */
   speciesId?: string;
   /** Alpha only: field-boss level (hover chip). */
   level?: number;
-  /** Fast-travel / bounty / tower display name (null for the unnamed variety). */
+  /** Fast-travel / effigy / bounty / tower display name. */
   name?: string | null;
 }
 
@@ -88,6 +88,44 @@ function humanizeCid(cid: string): string {
     .trim();
 }
 
+type EffigyPayload = {
+  type?: string | null;
+  class?: string | null;
+};
+
+/** Current Palworld relic-type -> Pal mapping. Unknown future types are still
+ *  shown by a humanized type name rather than being mislabeled as Lifmunk. */
+const EFFIGY_PAL_NAMES: Record<string, string> = {
+  CapturePower: "Lifmunk",
+  HungerReduction: "Lamball",
+  SwimSpeed: "Pengullet",
+  FoodDecayReduction: "Munchill",
+  JumpPower: "Rooby",
+  GliderSpeed: "Herbil",
+  ClimbSpeed: "Tanzee",
+  StatusAilmentResist: "Depresso",
+  StaminaReduction: "Cattiva",
+  SphereHoming: "Lunaris",
+  ExpBonus: "Relaxaurus",
+  RainbowPassiveRate: "Yakumo",
+  MoveSpeed: "Mimog",
+};
+
+function effigyDisplayName(type: string | null | undefined): string {
+  const key = (type ?? "CapturePower").replace(/^EPalRelicType::/, "");
+  const pal = EFFIGY_PAL_NAMES[key];
+  if (pal) return `${pal} Effigy`;
+  const human = key.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+  return `${human || "Unknown"} Effigy`;
+}
+
+/** Modern effigy actor classes are `BP_LevelObject_Relic_<PalInternal>_C`;
+ *  the suffix is the same internal species id used by the bundled Pal icons. */
+function effigySpeciesId(actorClass: string | null | undefined): string | undefined {
+  const match = /^BP_LevelObject_Relic_(.+)_C$/.exec(actorClass ?? "");
+  return match?.[1];
+}
+
 /** Build the POI pin list + per-layer counts for the active player scope. */
 export function buildPois(
   data: MapData,
@@ -134,6 +172,7 @@ export function buildPois(
   data.effigies.forEach((p, i) => {
     const found = p.guid != null && foundEff.has(p.guid);
     if (found) effFound++;
+    const typed = p as typeof p & EffigyPayload;
     pins.push({
       key: `ef${i}`,
       kind: "effigy",
@@ -142,6 +181,8 @@ export function buildPois(
       y: p.y,
       found,
       known: found,
+      name: effigyDisplayName(typed.type),
+      speciesId: effigySpeciesId(typed.class),
     });
   });
 
