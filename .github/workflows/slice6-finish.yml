@@ -1,0 +1,323 @@
+name: Temporary Slice 6 Finisher
+
+on:
+  push:
+    branches:
+      - wip/slice6
+
+permissions:
+  contents: write
+
+jobs:
+  finish-slice6:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wip/slice6
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Finish Slice 6 edits
+        shell: pwsh
+        run: |
+          $script = Join-Path $env:RUNNER_TEMP 'finish-slice6.py'
+          @'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              with open(path, 'r', encoding='utf-8', newline=None) as f:
+                  return f.read()
+
+          def write(path: str, text: str) -> None:
+              p = Path(path)
+              p.parent.mkdir(parents=True, exist_ok=True)
+              with open(p, 'w', encoding='utf-8', newline='\n') as f:
+                  f.write(text)
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          map_path = 'app/src/views/map/MapView.tsx'
+          text = read(map_path)
+
+          text = replace_once(
+              text,
+              '''      setFilters((f) => ({
+                ...f,
+                [target.filter]: true,
+                ...(target.filter === "effigies" ? { hideUnfoundEffigies: false } : {}),
+              }));
+              commitGesture();
+          ''',
+              '''      commitGesture();
+          ''',
+              'remove broad objective filter mutation',
+          )
+
+          text = replace_once(
+              text,
+              '''      clearTimeout(settleTimer.current);
+              dragAbort.current?.abort();
+          ''',
+              '''      clearTimeout(settleTimer.current);
+              clearTimeout(focusTimer.current);
+              dragAbort.current?.abort();
+          ''',
+              'clear focus timer on unmount',
+          )
+
+          text = replace_once(
+              text,
+              '''  useEffect(() => {
+            if (!mapFocusTarget) return;
+            if (!isLayerKey(mapFocusTarget.layer)) {
+              clearMapFocusTarget();
+              return;
+            }
+            if (mapFocusTarget.layer !== layer) {
+              selectLayer(mapFocusTarget.layer);
+              return;
+            }
+            if (applyMapFocus(mapFocusTarget)) clearMapFocusTarget();
+          }, [
+            mapFocusTarget,
+            layer,
+            selectLayer,
+            applyMapFocus,
+            clearMapFocusTarget,
+            viewport.w,
+            viewport.h,
+          ]);
+          ''',
+              '''  useEffect(() => {
+            if (!mapFocusTarget) return;
+            if (!isLayerKey(mapFocusTarget.layer)) {
+              clearLocalFocus();
+              clearMapFocusTarget();
+              return;
+            }
+            if (mapFocusTarget.layer !== layer) {
+              selectLayer(mapFocusTarget.layer);
+              return;
+            }
+            if (applyMapFocus(mapFocusTarget)) {
+              armLocalFocus(mapFocusTarget.id);
+              clearMapFocusTarget();
+            }
+          }, [
+            mapFocusTarget,
+            layer,
+            selectLayer,
+            applyMapFocus,
+            clearMapFocusTarget,
+            clearLocalFocus,
+            armLocalFocus,
+            viewport.w,
+            viewport.h,
+          ]);
+          ''',
+              'arm exact local POI focus',
+          )
+
+          text = replace_once(
+              text,
+              '''            entry={entry}
+                    containerRef={pinContainerRef}
+                    layer={layer}
+          ''',
+              '''            entry={entry}
+                    containerRef={pinContainerRef}
+                    focusedPoiId={focusedPoiId}
+                    layer={layer}
+          ''',
+              'pass focused POI to PinLayer',
+          )
+
+          write(map_path, text)
+
+          test_path = 'app/src/views/map/PinLayer.test.ts'
+          write(test_path, '''import { expect, test } from "bun:test";
+          import type { MapEntry } from "../../lib/map-coords";
+          import type { FogMask } from "./fog";
+          import type { PoiPin } from "./pins";
+          import {
+            poiFocusId,
+            resolveVisiblePois,
+            type LayerFilters,
+          } from "./PinLayer";
+
+          const entry: MapEntry = {
+            image: "",
+            px: [100, 100],
+            world_min: [0, 0],
+            world_max: [100, 100],
+            mask_px: [2, 2],
+            world_to_px: "test",
+          };
+
+          const baseFilters: LayerFilters = {
+            fastTravel: true,
+            alpha: true,
+            effigies: true,
+            bounties: true,
+            towers: true,
+            spawns: true,
+            players: true,
+            markers: true,
+            bases: true,
+            hideUnfoundEffigies: false,
+            hideFoundEffigies: false,
+          };
+
+          const fogged: FogMask = {
+            layer: "MainMap",
+            blurred: null as unknown as HTMLCanvasElement,
+            maskW: 2,
+            maskH: 2,
+            revealed: new Uint8Array(4),
+          };
+
+          function pin(
+            key: string,
+            kind: PoiPin["kind"] = "fast_travel",
+            extra: Partial<PoiPin> = {},
+          ): PoiPin {
+            return {
+              key,
+              kind,
+              map: "MainMap",
+              x: 50,
+              y: 50,
+              found: false,
+              known: false,
+              ...extra,
+            };
+          }
+
+          function visible(
+            pois: PoiPin[],
+            focusedPoiId: string | null,
+            filters: LayerFilters = baseFilters,
+            effigySelection: string[] | null = null,
+          ) {
+            return resolveVisiblePois({
+              entry,
+              layer: "MainMap",
+              k: 1,
+              tx: 0,
+              ty: 0,
+              vw: 100,
+              vh: 100,
+              pois,
+              filters,
+              effigySelection,
+              fog: fogged,
+              fogOn: true,
+              showHidden: false,
+              focusedPoiId,
+            });
+          }
+
+          test("focused POI alone bypasses a disabled category filter and fog", () => {
+            const target = pin("target");
+            const neighbor = pin("neighbor", "fast_travel", { x: 52, y: 52 });
+            const filters = { ...baseFilters, fastTravel: false };
+
+            const result = visible([target, neighbor], poiFocusId(target), filters);
+
+            expect(result).toHaveLength(1);
+            expect(result[0]?.pin.key).toBe("target");
+            expect(result[0]?.focused).toBe(true);
+          });
+
+          test("focused POI bypasses fog without revealing a neighboring POI", () => {
+            const target = pin("target");
+            const neighbor = pin("neighbor", "fast_travel", { x: 52, y: 52 });
+
+            const result = visible([target, neighbor], poiFocusId(target));
+
+            expect(result.map((row) => row.pin.key)).toEqual(["target"]);
+            expect(result[0]?.focused).toBe(true);
+          });
+
+          test("focused effigy bypasses type and hide-unfound filters only for itself", () => {
+            const target = pin("target", "effigy", { effigyType: "CapturePower" });
+            const sibling = pin("sibling", "effigy", {
+              x: 52,
+              y: 52,
+              effigyType: "CapturePower",
+            });
+            const filters = { ...baseFilters, hideUnfoundEffigies: true };
+
+            const result = visible(
+              [target, sibling],
+              poiFocusId(target),
+              filters,
+              [],
+            );
+
+            expect(result.map((row) => row.pin.key)).toEqual(["target"]);
+            expect(result[0]?.focused).toBe(true);
+          });
+
+          test("no focus preserves normal spoiler visibility", () => {
+            const target = pin("target");
+            expect(visible([target], null)).toEqual([]);
+          });
+          ''')
+
+          ignore_path = '.gitignore'
+          ignore = read(ignore_path)
+          ignore_block = '''
+          # pal-boss-keys dev tool build output
+          tools/pal-boss-keys/bin/
+          tools/pal-boss-keys/obj/
+          '''
+          if 'tools/pal-boss-keys/obj/' not in ignore:
+              ignore = ignore.rstrip() + '\n' + ignore_block.lstrip()
+              write(ignore_path, ignore)
+
+          changelog_path = 'CHANGELOG.md'
+          changelog = read(changelog_path)
+          marker = '''- Added Missing World Objectives to Progress with searchable unresolved map
+            objectives and one-click focus on the matching World Map POI.
+          '''
+          addition = '''- Added Missing World Objectives to Progress with searchable unresolved map
+            objectives and one-click focus on the matching World Map POI.
+
+          ### Changed
+          - Objective map focus now reveals only the selected POI temporarily, without changing
+            global map filters or spoiler visibility for neighboring pins.
+          '''
+          changelog = replace_once(changelog, marker, addition, 'update changelog')
+          write(changelog_path, changelog)
+          '@ | Set-Content -Path $script -Encoding UTF8
+          python $script
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Test frontend
+        working-directory: app
+        run: bun test
+
+      - name: Build frontend
+        working-directory: app
+        run: bun run build
+
+      - name: Commit finished Slice 6 to WIP branch
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/slice6-finish.yml -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status --short
+          git commit -m "Finish objective map focus"
+          git push origin HEAD:wip/slice6
