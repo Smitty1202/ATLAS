@@ -64,6 +64,8 @@ const SPAWN_NIGHT = "138,104,214"; // el-dark indigo
 const FILTERS_KEY = "atlas.mapFilters";
 const SHOW_HIDDEN_KEY = "atlas.mapShowHidden";
 const FOG_ON_KEY = "atlas.mapFogOn";
+const MAP_LAYER_KEY = "atlas.mapLayer";
+const MAP_VIEWS_KEY = "atlas.mapViews";
 
 const DEFAULT_FILTERS: LayerFilters = {
   fastTravel: true,
@@ -92,6 +94,70 @@ interface ViewTransform {
   k: number;
   tx: number;
   ty: number;
+}
+
+interface SavedMapView {
+  k: number;
+  centerX: number;
+  centerY: number;
+}
+
+type SavedMapViews = Partial<Record<LayerKey, SavedMapView>>;
+
+function readSavedLayer(): LayerKey {
+  try {
+    const saved = localStorage.getItem(MAP_LAYER_KEY);
+    if (saved === "MainMap" || saved === "Tree") return saved;
+  } catch {
+    // Ignore storage failures — fall back to MainMap.
+  }
+  return "MainMap";
+}
+
+function readSavedMapView(layer: LayerKey): SavedMapView | null {
+  try {
+    const raw = localStorage.getItem(MAP_VIEWS_KEY);
+    if (!raw) return null;
+    const saved = (JSON.parse(raw) as SavedMapViews)?.[layer];
+    if (
+      !saved ||
+      !Number.isFinite(saved.k) ||
+      !Number.isFinite(saved.centerX) ||
+      !Number.isFinite(saved.centerY)
+    ) {
+      return null;
+    }
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedMapView(
+  layer: LayerKey,
+  view: ViewTransform,
+  viewportWidth: number,
+  viewportHeight: number,
+) {
+  if (viewportWidth <= 0 || viewportHeight <= 0 || view.k <= 0) return;
+  try {
+    let saved: SavedMapViews = {};
+    const raw = localStorage.getItem(MAP_VIEWS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        saved = parsed as SavedMapViews;
+      }
+    }
+    saved[layer] = {
+      k: view.k,
+      centerX: (viewportWidth / 2 - view.tx) / view.k,
+      centerY: (viewportHeight / 2 - view.ty) / view.k,
+    };
+    localStorage.setItem(MAP_VIEWS_KEY, JSON.stringify(saved));
+  } catch {
+    // Persistence is best-effort; map interaction must never fail because of it.
+  }
 }
 
 /** Clamp a zoom factor into the interaction spec's range. */
@@ -123,7 +189,7 @@ export default function MapView() {
 
   const [mapData, setMapData] = useState<MapData | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [layer, setLayer] = useState<LayerKey>("MainMap");
+  const [layer, setLayer] = useState<LayerKey>(readSavedLayer);
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null);
   const [imgLoading, setImgLoading] = useState(true);
   const [imgError, setImgError] = useState<string | null>(null);
@@ -181,6 +247,10 @@ export default function MapView() {
   const readoutXRef = useRef<HTMLSpanElement>(null);
   const readoutYRef = useRef<HTMLSpanElement>(null);
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
+  const viewportRef = useRef(viewport);
+  const restoredLayerRef = useRef<LayerKey | null>(null);
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -227,6 +297,19 @@ export default function MapView() {
       // Ignore storage failures — non-fatal.
     }
   }, [fogOn]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(MAP_LAYER_KEY, layer);
+    } catch {
+      // Ignore storage failures — non-fatal.
+    }
+  }, [layer]);
+  useEffect(() => {
+    if (restoredLayerRef.current !== layer) return;
+    const el = canvasRef.current;
+    if (!el) return;
+    writeSavedMapView(layer, view, el.clientWidth, el.clientHeight);
+  }, [layer, view]);
 
   // --- Filter popover: close on Escape (outside-click handled by the overlay). -
   useEffect(() => {
@@ -438,21 +521,68 @@ export default function MapView() {
     setView(nv);
   }, [entry]);
 
+  const restoreOrFit = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el || !entry) return;
+    const vw = el.clientWidth;
+    const vh = el.clientHeight;
+    if (vw === 0 || vh === 0) return;
+    const saved = readSavedMapView(layer);
+    if (saved) {
+      const k = clampZoom(saved.k);
+      const nv = {
+        k,
+        tx: vw / 2 - saved.centerX * k,
+        ty: vh / 2 - saved.centerY * k,
+      };
+      gesturing.current = false;
+      clearTimeout(settleTimer.current);
+      liveRef.current = nv;
+      setView(nv);
+    } else {
+      fit();
+    }
+    restoredLayerRef.current = layer;
+  }, [entry, fit, layer]);
+
   useLayoutEffect(() => {
-    if (bitmap) fit();
-  }, [bitmap, layer, fit]);
+    if (bitmap && restoredLayerRef.current !== layer) restoreOrFit();
+  }, [bitmap, layer, restoreOrFit]);
 
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setViewport({ w: el.clientWidth, h: el.clientHeight });
-      fit();
-    });
+    const updateViewport = () => {
+      const next = { w: el.clientWidth, h: el.clientHeight };
+      const prev = viewportRef.current;
+      viewportRef.current = next;
+      setViewport(next);
+      if (
+        prev.w > 0 &&
+        prev.h > 0 &&
+        next.w > 0 &&
+        next.h > 0 &&
+        restoredLayerRef.current === layer
+      ) {
+        const base = liveRef.current;
+        const centerX = (prev.w / 2 - base.tx) / base.k;
+        const centerY = (prev.h / 2 - base.ty) / base.k;
+        const nv = {
+          k: base.k,
+          tx: next.w / 2 - centerX * base.k,
+          ty: next.h / 2 - centerY * base.k,
+        };
+        gesturing.current = false;
+        clearTimeout(settleTimer.current);
+        liveRef.current = nv;
+        setView(nv);
+      }
+    };
+    const ro = new ResizeObserver(updateViewport);
     ro.observe(el);
-    setViewport({ w: el.clientWidth, h: el.clientHeight });
+    updateViewport();
     return () => ro.disconnect();
-  }, [fit]);
+  }, [layer]);
 
   // --- Canvas paint: map -> spawn heat -> fog, under the viewport transform. -
   const paint = useCallback(() => {
@@ -560,6 +690,16 @@ export default function MapView() {
         // guard — StrictMode's dev remount runs this cleanup while the mount
         // frame is still pending.
         frameRef.current = 0;
+      }
+      const el = canvasRef.current;
+      const activeLayer = layerRef.current;
+      if (el && restoredLayerRef.current === activeLayer) {
+        writeSavedMapView(
+          activeLayer,
+          liveRef.current,
+          el.clientWidth,
+          el.clientHeight,
+        );
       }
       clearTimeout(settleTimer.current);
       dragAbort.current?.abort();
@@ -706,6 +846,25 @@ export default function MapView() {
     [commitGesture],
   );
 
+  const selectLayer = useCallback(
+    (next: LayerKey) => {
+      if (next === layer) return;
+      commitGesture();
+      const el = canvasRef.current;
+      if (el) {
+        writeSavedMapView(
+          layer,
+          liveRef.current,
+          el.clientWidth,
+          el.clientHeight,
+        );
+      }
+      restoredLayerRef.current = null;
+      setLayer(next);
+    },
+    [commitGesture, layer],
+  );
+
   const setFilter = useCallback((key: keyof LayerFilters, on: boolean) => {
     setFilters((f) => ({ ...f, [key]: on }));
   }, []);
@@ -741,7 +900,7 @@ export default function MapView() {
               return (
                 <button
                   key={l.key}
-                  onClick={() => setLayer(l.key)}
+                  onClick={() => selectLayer(l.key)}
                   aria-pressed={active}
                   title={l.hint}
                   className={`select-none border-l border-line px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors first:border-l-0 ${
