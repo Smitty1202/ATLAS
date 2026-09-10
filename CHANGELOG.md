@@ -13,6 +13,8 @@ version is marked Unreleased.
 - Updated Tauri/package identity for ATLAS.
 - Migrated update checks to the public Smitty1202/ATLAS GitHub Releases
   endpoint.
+- Parsed both legacy flat and modern typed Palworld effigy collection flags
+  while retaining the existing flattened GUID list for map compatibility.
 
 The remaining entries below are inherited Pal Lab release history retained for
 historical accuracy and upstream attribution.

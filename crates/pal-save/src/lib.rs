@@ -12,7 +12,8 @@ pub mod wgs;
 pub mod worldoption;
 
 pub use localdata::{
-    read_local_data, parse_player_map_state, CustomMarker, FogLayer, LocalData, PlayerMapRecord,
+    read_local_data, parse_player_map_state, CustomMarker, EffigyTypeFlags, FogLayer, LocalData,
+    PlayerMapRecord,
 };
 pub use map_objects::{read_base_points, read_map_objects, BasePoint, MapObjectInstance};
 pub use wgs::{

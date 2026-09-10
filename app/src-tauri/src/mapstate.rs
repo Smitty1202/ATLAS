@@ -38,6 +38,12 @@ pub struct MarkerDto {
     pub icon_type: i32,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct EffigyTypeFlagsDto {
+    pub effigy_type: String,
+    pub guids: Vec<String>,
+}
+
 /// Per-player map state. `uid` is the lowercase 32-char hex GUID (matching
 /// [`crate::save::PlayerRef::uid`]); `x`/`y` are world coords, `null` when the
 /// position could not be recovered. Flag lists hold only `true`/found keys.
@@ -49,6 +55,8 @@ pub struct MapPlayerState {
     pub y: Option<f64>,
     pub fast_travel_unlocked: Vec<String>,
     pub effigies_found: Vec<String>,
+    pub effigies_found_legacy: Vec<String>,
+    pub effigies_found_by_type: Vec<EffigyTypeFlagsDto>,
     pub effigy_possess_num: i32,
     pub bosses_defeated: Vec<String>,
     pub areas_found: Vec<String>,
@@ -160,6 +168,8 @@ fn read_players(dir: &Path, nicknames: &HashMap<String, String>) -> Vec<MapPlaye
             y: rec.y,
             fast_travel_unlocked: rec.fast_travel_unlocked,
             effigies_found: rec.effigies_found,
+            effigies_found_legacy: rec.effigies_found_legacy,
+            effigies_found_by_type: build_effigy_groups(rec.effigies_found_by_type),
             effigy_possess_num: rec.effigy_possess_num,
             bosses_defeated: rec.bosses_defeated,
             areas_found: rec.areas_found,
@@ -167,6 +177,16 @@ fn read_players(dir: &Path, nicknames: &HashMap<String, String>) -> Vec<MapPlaye
         });
     }
     players
+}
+
+fn build_effigy_groups(groups: Vec<pal_save::EffigyTypeFlags>) -> Vec<EffigyTypeFlagsDto> {
+    groups
+        .into_iter()
+        .map(|g| EffigyTypeFlagsDto {
+            effigy_type: g.effigy_type,
+            guids: g.guids,
+        })
+        .collect()
 }
 
 /// Locate + read the client `LocalData.sav` for this world.

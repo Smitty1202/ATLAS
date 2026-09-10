@@ -764,10 +764,15 @@ export interface FogLayer {
   revealed_pct: number;
 }
 
+export interface EffigyTypeFlags {
+  effigy_type: string;
+  guids: string[];
+}
+
 /** Per-player map state from `get_map_state`. `uid` is the lowercase 32-char
  * hex GUID (joins `PlayerRef.uid`); `x`/`y` are world coords, `null` when the
- * position could not be recovered. The flag arrays hold only found/true keys
- * (fast-travel + effigy GUID hex keys, defeated-boss + discovered-area names). */
+ * position could not be recovered. `effigies_found` is the compatibility union
+ * of legacy flat and modern typed effigy GUID flags. */
 export interface MapPlayerState {
   uid: string;
   nickname: string | null;
@@ -775,6 +780,8 @@ export interface MapPlayerState {
   y: number | null;
   fast_travel_unlocked: string[];
   effigies_found: string[];
+  effigies_found_legacy: string[];
+  effigies_found_by_type: EffigyTypeFlags[];
   effigy_possess_num: number;
   bosses_defeated: string[];
   areas_found: string[];

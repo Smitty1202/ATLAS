@@ -3,6 +3,8 @@
 //! (`LastTransform` position + the `RecordData` unlock/possession flags).
 //! Read-only, like the rest of this crate.
 
+use std::collections::HashSet;
+
 use pal_data::types::Guid;
 
 use crate::archive::Reader;
@@ -143,6 +145,13 @@ fn custom_marker(props: &[(String, Value)]) -> Option<CustomMarker> {
     Some(CustomMarker { x, y, icon_type })
 }
 
+/// Collected modern effigy instance GUIDs for one save-provided effigy type.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct EffigyTypeFlags {
+    pub effigy_type: String,
+    pub guids: Vec<String>,
+}
+
 /// One player's map-relevant state, recovered from their `.sav`. `uid` is the
 /// `PlayerUId`; `x`/`y` are the last-known world position (`z` dropped — the map
 /// is 2D). The flag vectors carry only the keys whose flag is `true`.
@@ -152,6 +161,9 @@ pub struct PlayerMapRecord {
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub fast_travel_unlocked: Vec<String>,
+    pub effigies_found_legacy: Vec<String>,
+    pub effigies_found_by_type: Vec<EffigyTypeFlags>,
+    /// Deduped compatibility union of legacy flat flags and typed effigy flags.
     pub effigies_found: Vec<String>,
     pub effigy_possess_num: i32,
     pub bosses_defeated: Vec<String>,
@@ -222,7 +234,10 @@ fn parse_player_body_map(r: &mut Reader) -> Result<PlayerMapRecord, SaveError> {
 /// Populate the `RecordData`-sourced fields of a [`PlayerMapRecord`].
 fn fill_record(rec: &mut PlayerMapRecord, props: &[(String, Value)]) {
     rec.fast_travel_unlocked = true_keys(props, "FastTravelPointUnlockFlag");
-    rec.effigies_found = true_keys(props, "RelicObtainForInstanceFlag");
+    rec.effigies_found_legacy = true_keys(props, "RelicObtainForInstanceFlag");
+    rec.effigies_found_by_type = typed_effigy_flags(props);
+    rec.effigies_found =
+        merge_effigy_guids(&rec.effigies_found_legacy, &rec.effigies_found_by_type);
     rec.effigy_possess_num = gvas::find(props, "RelicPossessNum")
         .and_then(Value::as_i32)
         .unwrap_or(0);
@@ -241,21 +256,162 @@ fn fill_record(rec: &mut PlayerMapRecord, props: &[(String, Value)]) {
 /// Collect the keys of a `Map<Name, Bool>` property whose value is `true`.
 fn true_keys(props: &[(String, Value)], name: &str) -> Vec<String> {
     gvas::find(props, name)
-        .and_then(Value::as_map)
-        .map(|entries| {
-            entries
-                .iter()
-                .filter(|(_, v)| v.as_bool().unwrap_or(false))
-                .filter_map(|(k, _)| k.as_str().map(str::to_string))
-                .collect()
-        })
+        .and_then(true_keys_from_map_value)
         .unwrap_or_default()
+}
+
+fn true_keys_from_map_value(value: &Value) -> Option<Vec<String>> {
+    value.as_map().map(|entries| {
+        entries
+            .iter()
+            .filter(|(_, v)| v.as_bool().unwrap_or(false))
+            .filter_map(|(k, _)| k.as_str().map(str::to_string))
+            .collect()
+    })
+}
+
+/// Decode modern Palworld typed effigy flags:
+/// `Array<Props { Type: Enum/Name, Flags: Map<Name, Bool> }>` in ATLAS's
+/// [`Value`] model. Malformed members are skipped independently.
+fn typed_effigy_flags(props: &[(String, Value)]) -> Vec<EffigyTypeFlags> {
+    let Some(value) = gvas::find(props, "RelicObtainForInstanceFlagByType") else {
+        return Vec::new();
+    };
+    typed_effigy_flags_from_value(value)
+}
+
+fn typed_effigy_flags_from_value(value: &Value) -> Vec<EffigyTypeFlags> {
+    let mut out = Vec::new();
+    match value {
+        Value::Array(entries) => {
+            for entry in entries {
+                let Some(props) = entry.as_props() else {
+                    continue;
+                };
+                let Some(group) = effigy_type_flags_from_props(props) else {
+                    continue;
+                };
+                push_effigy_group(&mut out, group);
+            }
+        }
+        // Defensive support for equivalent decoded map shapes if a save variant
+        // ever serializes the type as the key and the flag struct/map as value.
+        Value::Map(entries) => {
+            for (key, value) in entries {
+                let Some(effigy_type) = key.as_str().map(effigy_type_name) else {
+                    continue;
+                };
+                let guids = match value {
+                    Value::Props(props) => {
+                        if let Some(group) = effigy_type_flags_from_props(props) {
+                            push_effigy_group(&mut out, group);
+                            continue;
+                        }
+                        let Some(guids) =
+                            gvas::find(props, "Flags").and_then(true_keys_from_map_value)
+                        else {
+                            continue;
+                        };
+                        guids
+                    }
+                    _ => {
+                        let Some(guids) = true_keys_from_map_value(value) else {
+                            continue;
+                        };
+                        guids
+                    }
+                };
+                push_effigy_group(&mut out, EffigyTypeFlags { effigy_type, guids });
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn effigy_type_flags_from_props(props: &[(String, Value)]) -> Option<EffigyTypeFlags> {
+    let effigy_type = gvas::find(props, "Type")
+        .and_then(Value::as_str)
+        .map(effigy_type_name)?;
+    if effigy_type.is_empty() {
+        return None;
+    }
+    let guids = gvas::find(props, "Flags").and_then(true_keys_from_map_value)?;
+    Some(EffigyTypeFlags { effigy_type, guids })
+}
+
+fn effigy_type_name(raw: &str) -> String {
+    raw.strip_prefix("EPalRelicType::")
+        .unwrap_or(raw)
+        .to_string()
+}
+
+fn push_effigy_group(out: &mut Vec<EffigyTypeFlags>, mut group: EffigyTypeFlags) {
+    if group.effigy_type.is_empty() {
+        return;
+    }
+    if let Some(existing) = out.iter_mut().find(|g| g.effigy_type == group.effigy_type) {
+        append_unique(&mut existing.guids, &group.guids);
+    } else {
+        let mut guids = Vec::new();
+        append_unique(&mut guids, &group.guids);
+        group.guids = guids;
+        out.push(group);
+    }
+}
+
+fn merge_effigy_guids(legacy: &[String], typed: &[EffigyTypeFlags]) -> Vec<String> {
+    let mut out = Vec::new();
+    append_unique(&mut out, legacy);
+    for group in typed {
+        append_unique(&mut out, &group.guids);
+    }
+    out
+}
+
+fn append_unique(out: &mut Vec<String>, values: &[String]) {
+    let mut seen: HashSet<String> = out.iter().cloned().collect();
+    for value in values {
+        if seen.insert(value.clone()) {
+            out.push(value.clone());
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::compress::decompress_sav;
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| (*v).to_string()).collect()
+    }
+
+    fn flag_map(entries: &[(&str, bool)]) -> Value {
+        Value::Map(
+            entries
+                .iter()
+                .map(|(key, value)| (Value::Name((*key).to_string()), Value::Bool(*value)))
+                .collect(),
+        )
+    }
+
+    fn typed_entry(effigy_type: &str, flags: &[(&str, bool)]) -> Value {
+        typed_entry_raw(&format!("EPalRelicType::{effigy_type}"), flags)
+    }
+
+    fn typed_entry_raw(effigy_type: &str, flags: &[(&str, bool)]) -> Value {
+        Value::Props(vec![
+            ("Type".to_string(), Value::Name(effigy_type.to_string())),
+            ("Flags".to_string(), flag_map(flags)),
+        ])
+    }
+
+    fn fill_synthetic(props: Vec<(String, Value)>) -> PlayerMapRecord {
+        let mut rec = PlayerMapRecord::default();
+        fill_record(&mut rec, &props);
+        rec
+    }
 
     fn load(name: &str) -> Vec<u8> {
         let path = format!(
@@ -271,6 +427,176 @@ mod tests {
             .iter()
             .find(|l| l.map_id == id)
             .unwrap_or_else(|| panic!("layer {id} missing"))
+    }
+
+    #[test]
+    fn synthetic_effigy_legacy_flat_flags_true_only() {
+        let rec = fill_synthetic(vec![(
+            "RelicObtainForInstanceFlag".to_string(),
+            flag_map(&[("LEGACY_A", true), ("LEGACY_B", false), ("LEGACY_C", true)]),
+        )]);
+
+        assert_eq!(
+            rec.effigies_found_legacy,
+            strings(&["LEGACY_A", "LEGACY_C"])
+        );
+        assert!(rec.effigies_found_by_type.is_empty());
+        assert_eq!(rec.effigies_found, strings(&["LEGACY_A", "LEGACY_C"]));
+    }
+
+    #[test]
+    fn synthetic_effigy_typed_flags_multiple_types_true_only() {
+        let rec = fill_synthetic(vec![(
+            "RelicObtainForInstanceFlagByType".to_string(),
+            Value::Array(vec![
+                typed_entry(
+                    "CapturePower",
+                    &[
+                        ("CAPTURE_A", true),
+                        ("CAPTURE_B", false),
+                        ("CAPTURE_C", true),
+                    ],
+                ),
+                typed_entry("ClimbSpeed", &[("CLIMB_A", true), ("CLIMB_B", true)]),
+            ]),
+        )]);
+
+        assert!(rec.effigies_found_legacy.is_empty());
+        assert_eq!(
+            rec.effigies_found_by_type,
+            vec![
+                EffigyTypeFlags {
+                    effigy_type: "CapturePower".to_string(),
+                    guids: strings(&["CAPTURE_A", "CAPTURE_C"]),
+                },
+                EffigyTypeFlags {
+                    effigy_type: "ClimbSpeed".to_string(),
+                    guids: strings(&["CLIMB_A", "CLIMB_B"]),
+                },
+            ]
+        );
+        assert_eq!(
+            rec.effigies_found,
+            strings(&["CAPTURE_A", "CAPTURE_C", "CLIMB_A", "CLIMB_B"])
+        );
+    }
+
+    #[test]
+    fn synthetic_effigy_mixed_legacy_and_typed_union_both_sources() {
+        let rec = fill_synthetic(vec![
+            (
+                "RelicObtainForInstanceFlag".to_string(),
+                flag_map(&[("LEGACY_A", true)]),
+            ),
+            (
+                "RelicObtainForInstanceFlagByType".to_string(),
+                Value::Array(vec![typed_entry("SphereHoming", &[("TYPED_A", true)])]),
+            ),
+        ]);
+
+        assert_eq!(rec.effigies_found_legacy, strings(&["LEGACY_A"]));
+        assert_eq!(
+            rec.effigies_found_by_type,
+            vec![EffigyTypeFlags {
+                effigy_type: "SphereHoming".to_string(),
+                guids: strings(&["TYPED_A"]),
+            }]
+        );
+        assert_eq!(rec.effigies_found, strings(&["LEGACY_A", "TYPED_A"]));
+    }
+
+    #[test]
+    fn synthetic_effigy_duplicate_guid_flattened_once() {
+        let rec = fill_synthetic(vec![
+            (
+                "RelicObtainForInstanceFlag".to_string(),
+                flag_map(&[("DUPLICATE_GUID", true), ("LEGACY_ONLY", true)]),
+            ),
+            (
+                "RelicObtainForInstanceFlagByType".to_string(),
+                Value::Array(vec![typed_entry(
+                    "CapturePower",
+                    &[("DUPLICATE_GUID", true), ("TYPED_ONLY", true)],
+                )]),
+            ),
+        ]);
+
+        assert_eq!(
+            rec.effigies_found,
+            strings(&["DUPLICATE_GUID", "LEGACY_ONLY", "TYPED_ONLY"])
+        );
+        assert_eq!(
+            rec.effigies_found_legacy,
+            strings(&["DUPLICATE_GUID", "LEGACY_ONLY"])
+        );
+        assert_eq!(
+            rec.effigies_found_by_type[0].guids,
+            strings(&["DUPLICATE_GUID", "TYPED_ONLY"])
+        );
+    }
+
+    #[test]
+    fn synthetic_effigy_unknown_future_type_is_retained() {
+        let rec = fill_synthetic(vec![(
+            "RelicObtainForInstanceFlagByType".to_string(),
+            Value::Array(vec![typed_entry_raw(
+                "EPalRelicType::FutureTraversal",
+                &[("FUTURE_A", true)],
+            )]),
+        )]);
+
+        assert_eq!(
+            rec.effigies_found_by_type,
+            vec![EffigyTypeFlags {
+                effigy_type: "FutureTraversal".to_string(),
+                guids: strings(&["FUTURE_A"]),
+            }]
+        );
+        assert_eq!(rec.effigies_found, strings(&["FUTURE_A"]));
+    }
+
+    #[test]
+    fn synthetic_effigy_missing_typed_property_keeps_legacy_behavior() {
+        let rec = fill_synthetic(vec![(
+            "RelicObtainForInstanceFlag".to_string(),
+            flag_map(&[("LEGACY_A", false), ("LEGACY_B", true)]),
+        )]);
+
+        assert_eq!(rec.effigies_found_legacy, strings(&["LEGACY_B"]));
+        assert!(rec.effigies_found_by_type.is_empty());
+        assert_eq!(rec.effigies_found, strings(&["LEGACY_B"]));
+    }
+
+    #[test]
+    fn synthetic_effigy_malformed_typed_members_are_ignored() {
+        let rec = fill_synthetic(vec![(
+            "RelicObtainForInstanceFlagByType".to_string(),
+            Value::Array(vec![
+                Value::Str("bad entry".to_string()),
+                Value::Props(vec![("Flags".to_string(), flag_map(&[("NO_TYPE", true)]))]),
+                Value::Props(vec![(
+                    "Type".to_string(),
+                    Value::Name("EPalRelicType::NoFlags".to_string()),
+                )]),
+                Value::Props(vec![
+                    (
+                        "Type".to_string(),
+                        Value::Name("EPalRelicType::BadFlags".to_string()),
+                    ),
+                    ("Flags".to_string(), Value::Str("not a map".to_string())),
+                ]),
+                typed_entry("ExpBonus", &[("EXP_A", true), ("EXP_B", false)]),
+            ]),
+        )]);
+
+        assert_eq!(
+            rec.effigies_found_by_type,
+            vec![EffigyTypeFlags {
+                effigy_type: "ExpBonus".to_string(),
+                guids: strings(&["EXP_A"]),
+            }]
+        );
+        assert_eq!(rec.effigies_found, strings(&["EXP_A"]));
     }
 
     #[test]
