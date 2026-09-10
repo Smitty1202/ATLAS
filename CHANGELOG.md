@@ -3,6 +3,12 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.4.0] - Unreleased
+
+### Added
+- Added a read-only Progress dashboard with active-scope Pal species, map
+  completion counters, and world/player/base/owned-Pal summary stats.
+
 ## [0.3.0] - 2026-09-10
 
 ### Added

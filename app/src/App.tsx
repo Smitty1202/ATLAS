@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import SaveInspector from "./views/SaveInspector";
+import Progress from "./views/Progress";
 import Solver from "./views/Solver";
 import Paldex from "./views/Paldex";
 import IvLab from "./views/IvLab";
@@ -59,6 +60,16 @@ function NavIcon({ view }: { view: View }) {
         <path d="M6 16.5v-2a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v2M12 7.4v4" />
       </svg>
     );
+  if (view === "progress")
+    return (
+      <svg {...common}>
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <rect x="7" y="11" width="2.8" height="5" rx="0.7" />
+        <rect x="12" y="8" width="2.8" height="8" rx="0.7" />
+        <rect x="17" y="5" width="2.8" height="11" rx="0.7" />
+      </svg>
+    );
   if (view === "ivlab")
     return (
       <svg {...common}>
@@ -89,6 +100,7 @@ function NavIcon({ view }: { view: View }) {
 
 const NAV: { id: View; label: string; hint: string }[] = [
   { id: "save", label: "Save Inspector", hint: "Roster" },
+  { id: "progress", label: "Progress", hint: "Dashboard" },
   { id: "solver", label: "Solver", hint: "Breeding plans" },
   { id: "ivlab", label: "IV Lab", hint: "Stat breeding" },
   { id: "paldex", label: "Pal-dex", hint: "Reference" },
@@ -1216,6 +1228,7 @@ function Shell() {
         ) : (
           <ErrorBoundary key={view} onReset={() => setView("save")}>
             {view === "save" && <SaveInspector />}
+            {view === "progress" && <Progress />}
             {view === "solver" && <Solver />}
             {view === "ivlab" && <IvLab />}
             {view === "paldex" && <Paldex />}

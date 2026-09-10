@@ -27,6 +27,7 @@ import {
 } from "react";
 import { invoke } from "../../lib/tauri";
 import { useAppState } from "../../state";
+import { useMapStateRefresh } from "../../lib/use-map-state";
 import {
   worldToPx,
   pxToWorld,
@@ -36,7 +37,7 @@ import {
   type MapEntry,
 } from "../../lib/map-coords";
 import { loadMapData, baseSpeciesId, isFieldBossSpawn } from "../../lib/map-data";
-import type { MapState, NamedEntry } from "../../lib/types";
+import type { NamedEntry } from "../../lib/types";
 import { buildFogMask, isRevealed, type FogMask } from "./fog";
 import { buildPois } from "./pins";
 import { loadMapIcons, type IconManifest } from "./icons";
@@ -66,7 +67,6 @@ const SHOW_HIDDEN_KEY = "atlas.mapShowHidden";
 const FOG_ON_KEY = "atlas.mapFogOn";
 const MAP_LAYER_KEY = "atlas.mapLayer";
 const MAP_VIEWS_KEY = "atlas.mapViews";
-const MAP_REFRESH_MS = 30_000;
 
 const DEFAULT_FILTERS: LayerFilters = {
   fastTravel: true,
@@ -195,7 +195,7 @@ export default function MapView() {
   const [imgLoading, setImgLoading] = useState(true);
   const [imgError, setImgError] = useState<string | null>(null);
 
-  const [mapState, setMapState] = useState<MapState | null>(null);
+  const { mapState } = useMapStateRefresh(saveDir);
   const [fogMask, setFogMask] = useState<FogMask | null>(null);
   const [fogOn, setFogOn] = useState<boolean>(() => {
     try {
@@ -370,55 +370,6 @@ export default function MapView() {
       alive = false;
     };
   }, [entry]);
-
-  // --- Fetch and periodically refresh save-backed map state. --------------
-  useEffect(() => {
-    if (!saveDir) {
-      setMapState(null);
-      return;
-    }
-
-    let alive = true;
-    let inFlight = false;
-    let hasLoaded = false;
-
-    const refresh = () => {
-      if (inFlight) return;
-      inFlight = true;
-      invoke<MapState>("get_map_state", { saveDir })
-        .then((s) => {
-          if (!alive) return;
-          hasLoaded = true;
-          setMapState(s);
-        })
-        .catch(() => {
-          // A save can be briefly unreadable while the game is writing it. Keep
-          // the last good snapshot on periodic failures; only clear on an
-          // initial load failure where there is nothing useful to preserve.
-          if (alive && !hasLoaded) setMapState(null);
-        })
-        .finally(() => {
-          inFlight = false;
-        });
-    };
-
-    refresh();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
-    }, MAP_REFRESH_MS);
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    window.addEventListener("focus", refreshWhenVisible);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refreshWhenVisible);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [saveDir]);
 
   // --- Build the fog mask for the active layer when state/layer changes. ---
   const activeFog = useMemo(

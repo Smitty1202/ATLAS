@@ -44,7 +44,7 @@ import type {
 import type { SolveSpec } from "./lib/use-solve";
 import { hexGuid } from "./components/palbox/selectors";
 
-export type View = "save" | "solver" | "paldex" | "ivlab" | "worldmap";
+export type View = "save" | "progress" | "solver" | "paldex" | "ivlab" | "worldmap";
 
 /** localStorage key for the last successfully loaded save folder. */
 const SAVE_DIR_KEY = "atlas.saveDir";
