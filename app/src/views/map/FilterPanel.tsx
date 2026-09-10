@@ -98,6 +98,7 @@ export default function FilterPanel({
   const [effigySelection, setEffigySelection] = useState<EffigyTypeSelection>(
     readEffigyTypeSelection,
   );
+  const [effigyTypesOpen, setEffigyTypesOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => setEffigySelection(readEffigyTypeSelection());
@@ -110,6 +111,12 @@ export default function FilterPanel({
     effigySelection === null
       ? allEffigyKeys.length
       : allEffigyKeys.filter((key) => effigySelection.includes(key)).length;
+  const effigyTypeSummary =
+    selectedCount === allEffigyKeys.length
+      ? "All"
+      : selectedCount === 0
+        ? "None"
+        : `${selectedCount}/${allEffigyKeys.length}`;
 
   const applyEffigySelection = (next: EffigyTypeSelection) => {
     setEffigySelection(next);
@@ -163,55 +170,81 @@ export default function FilterPanel({
         }
         dimCount={!counts.joined && !hideUnfound}
       />
-      {filters.effigies && (
-        <div className="mb-0.5 ml-3 border-l border-line-soft pl-2">
-          <button
-            type="button"
-            onClick={() => setFilter("hideUnfoundEffigies", !hideUnfound)}
-            role="switch"
-            aria-checked={hideUnfound}
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
-          >
-            <span
-              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
-                hideUnfound ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
-              }`}
-            >
-              {hideUnfound && (
-                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
-                </svg>
-              )}
-            </span>
-            <span className={`flex-1 font-mono text-[11px] tracking-wide ${hideUnfound ? "text-ink" : "text-ink-faint"}`}>
-              Hide unfound
-            </span>
-          </button>
-          <p className="px-2 pb-1 font-mono text-[9px] leading-relaxed tracking-wide text-ink-faint">
-            Spoiler-safe — hides effigies you haven't collected yet.
-          </p>
 
-          {effigyTypes.length > 0 && (
+      {effigyTypes.length > 0 && (
+        <div className="mb-0.5 ml-3 border-l border-line-soft pl-2">
+          <div className="flex items-center gap-1 px-1 py-0.5">
+            <button
+              type="button"
+              onClick={() => setEffigyTypesOpen((open) => !open)}
+              aria-expanded={effigyTypesOpen}
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`shrink-0 text-ink-faint transition-transform ${effigyTypesOpen ? "rotate-90" : ""}`}
+              >
+                <path d="M4 2.5L8 6 4 9.5" />
+              </svg>
+              <span className="min-w-0 flex-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+                Effigy types
+              </span>
+              <span className="font-mono text-[9px] tabular-nums text-ink-dim">
+                {effigyTypeSummary}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => applyEffigySelection(null)}
+              className="rounded-sm px-1 py-1 font-mono text-[9px] uppercase tracking-wider text-amber hover:bg-hover hover:text-amber-bright"
+              title="Show all effigy types"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => applyEffigySelection([])}
+              className="rounded-sm px-1 py-1 font-mono text-[9px] uppercase tracking-wider text-ink-faint hover:bg-hover hover:text-ink"
+              title="Hide all effigy types"
+            >
+              None
+            </button>
+          </div>
+
+          {filters.effigies && (
+            <button
+              type="button"
+              onClick={() => setFilter("hideUnfoundEffigies", !hideUnfound)}
+              role="switch"
+              aria-checked={hideUnfound}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+            >
+              <span
+                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
+                  hideUnfound ? "border-amber bg-amber text-abyss" : "border-line bg-abyss"
+                }`}
+              >
+                {hideUnfound && (
+                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
+                  </svg>
+                )}
+              </span>
+              <span className={`flex-1 font-mono text-[11px] tracking-wide ${hideUnfound ? "text-ink" : "text-ink-faint"}`}>
+                Hide unfound
+              </span>
+            </button>
+          )}
+
+          {effigyTypesOpen && (
             <div className="border-t border-line-soft pt-1">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
-                  Types {selectedCount}/{allEffigyKeys.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => applyEffigySelection(null)}
-                  className="font-mono text-[9px] uppercase tracking-wider text-amber hover:text-amber-bright"
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyEffigySelection([])}
-                  className="font-mono text-[9px] uppercase tracking-wider text-ink-faint hover:text-ink"
-                >
-                  None
-                </button>
-              </div>
               {effigyTypes.map((type) => {
                 const on = effigySelection === null || effigySelection.includes(type.key);
                 return (
@@ -247,6 +280,7 @@ export default function FilterPanel({
           )}
         </div>
       )}
+
       {hasBounties && (
         <Row
           on={filters.bounties}
