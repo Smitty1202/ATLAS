@@ -3,6 +3,16 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.3.0] - 2026-09-10
+
+### Added
+- Remembered map layer and viewport position/zoom.
+- Persistent effigy-type filters with All/None and hide-found controls.
+- 30-second map refresh plus refresh on focus/visibility.
+- Current field-boss defeat tracking.
+
+### Changed
+- Map refresh keeps the last good state during transient save-read failures.
 ## [0.2.0] - 2026-09-09
 
 ### Changed
