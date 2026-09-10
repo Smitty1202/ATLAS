@@ -26,7 +26,7 @@ import {
   useState,
 } from "react";
 import { invoke } from "../../lib/tauri";
-import { useAppState } from "../../state";
+import { useAppState, type MapFocusTarget } from "../../state";
 import { useMapStateRefresh } from "../../lib/use-map-state";
 import {
   worldToPx,
@@ -115,6 +115,10 @@ function readSavedLayer(): LayerKey {
   return "MainMap";
 }
 
+function isLayerKey(layer: string): layer is LayerKey {
+  return layer === "MainMap" || layer === "Tree";
+}
+
 function readSavedMapView(layer: LayerKey): SavedMapView | null {
   try {
     const raw = localStorage.getItem(MAP_VIEWS_KEY);
@@ -186,6 +190,8 @@ export default function MapView() {
     requestDex,
     mapSpawnTarget,
     clearMapSpawnTarget,
+    mapFocusTarget,
+    clearMapFocusTarget,
   } = useAppState();
 
   const [mapData, setMapData] = useState<MapData | null>(null);
@@ -854,6 +860,57 @@ export default function MapView() {
   const setFilter = useCallback((key: keyof LayerFilters, on: boolean) => {
     setFilters((f) => ({ ...f, [key]: on }));
   }, []);
+
+  const applyMapFocus = useCallback(
+    (target: MapFocusTarget) => {
+      const el = canvasRef.current;
+      if (!entry || !el || viewportRef.current.w <= 0 || viewportRef.current.h <= 0) {
+        return false;
+      }
+
+      setFilters((f) => ({
+        ...f,
+        [target.filter]: true,
+        ...(target.filter === "effigies" ? { hideUnfoundEffigies: false } : {}),
+      }));
+      commitGesture();
+
+      const { w, h } = viewportRef.current;
+      const [u, v] = worldToPx(entry, target.x, target.y);
+      const k = clampZoom(Math.max(liveRef.current.k, 0.42));
+      const nv = { k, tx: w / 2 - u * k, ty: h / 2 - v * k };
+      gesturing.current = false;
+      clearTimeout(settleTimer.current);
+      liveRef.current = nv;
+      const c = pinContainerRef.current;
+      if (c) c.style.transform = `translate(${nv.tx}px, ${nv.ty}px)`;
+      restoredLayerRef.current = layer;
+      setView(nv);
+      return true;
+    },
+    [commitGesture, entry, layer],
+  );
+
+  useEffect(() => {
+    if (!mapFocusTarget) return;
+    if (!isLayerKey(mapFocusTarget.layer)) {
+      clearMapFocusTarget();
+      return;
+    }
+    if (mapFocusTarget.layer !== layer) {
+      selectLayer(mapFocusTarget.layer);
+      return;
+    }
+    if (applyMapFocus(mapFocusTarget)) clearMapFocusTarget();
+  }, [
+    mapFocusTarget,
+    layer,
+    selectLayer,
+    applyMapFocus,
+    clearMapFocusTarget,
+    viewport.w,
+    viewport.h,
+  ]);
 
   // Stable callback so a memoized PinLayer can skip re-rendering all ~360 pins
   // on unrelated MapView state churn (coordinate readout on mousemove, spawn

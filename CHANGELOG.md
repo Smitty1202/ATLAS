@@ -14,6 +14,8 @@ version is marked Unreleased.
   into captured, discovered, and undiscovered lists with Pal-dex navigation.
 - Added lifetime capture statistics to Progress, including total captures,
   top captured species, and capture counts in the captured collection list.
+- Added Missing World Objectives to Progress with searchable unresolved map
+  objectives and one-click focus on the matching World Map POI.
 
 ## [0.3.0] - 2026-09-10
 

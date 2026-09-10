@@ -46,6 +46,21 @@ import { hexGuid } from "./components/palbox/selectors";
 
 export type View = "save" | "progress" | "solver" | "paldex" | "ivlab" | "worldmap";
 
+export type MapFocusFilter =
+  | "fastTravel"
+  | "alpha"
+  | "effigies"
+  | "bounties"
+  | "towers";
+
+export interface MapFocusTarget {
+  id: string;
+  layer: string;
+  x: number;
+  y: number;
+  filter: MapFocusFilter;
+}
+
 /** localStorage key for the last successfully loaded save folder. */
 const SAVE_DIR_KEY = "atlas.saveDir";
 
@@ -342,6 +357,12 @@ export interface AppState {
   requestMapSpawn: (speciesId: string) => void;
   /** The World Map clears the pending spawn target once it has consumed it. */
   clearMapSpawnTarget: () => void;
+  /** One-shot World Map focus target for a concrete map POI. */
+  mapFocusTarget: MapFocusTarget | null;
+  /** Jump to the World Map, activate the target layer/filter, and center a POI. */
+  requestMapFocus: (target: MapFocusTarget) => void;
+  /** The World Map clears the pending focus target once it has consumed it. */
+  clearMapFocusTarget: () => void;
   /** A pending batch of solve specs the Solver should load into its breeding
    * queue and solve once, on its next render — the one-shot hand-off behind the
    * Pal-dex "Breed missing" action. Null when nothing is pending. */
@@ -415,6 +436,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [dexTarget, setDexTarget] = useState<string | null>(null);
   const [dexInstance, setDexInstance] = useState<string | null>(null);
   const [mapSpawnTarget, setMapSpawnTarget] = useState<string | null>(null);
+  const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null);
   const [queueSeed, setQueueSeed] = useState<SolveSpec[] | null>(null);
   // Shared plan link (`#plan=<code>`): read the fragment ONCE at mount (lazy
   // initializer, so it's captured before any later in-app hash change), then let
@@ -791,10 +813,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const requestMapSpawn = useCallback((speciesId: string) => {
+    setMapFocusTarget(null);
     setMapSpawnTarget(speciesId);
     setView("worldmap");
   }, []);
   const clearMapSpawnTarget = useCallback(() => setMapSpawnTarget(null), []);
+
+  const requestMapFocus = useCallback((target: MapFocusTarget) => {
+    setMapSpawnTarget(null);
+    setMapFocusTarget(target);
+    setView("worldmap");
+  }, []);
+  const clearMapFocusTarget = useCallback(() => setMapFocusTarget(null), []);
 
   const requestQueueSolve = useCallback((specs: SolveSpec[]) => {
     setQueueSeed(specs);
@@ -835,6 +865,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       mapSpawnTarget,
       requestMapSpawn,
       clearMapSpawnTarget,
+      mapFocusTarget,
+      requestMapFocus,
+      clearMapFocusTarget,
       queueSeed,
       requestQueueSolve,
       clearQueueSeed,
@@ -885,6 +918,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       mapSpawnTarget,
       requestMapSpawn,
       clearMapSpawnTarget,
+      mapFocusTarget,
+      requestMapFocus,
+      clearMapFocusTarget,
       queueSeed,
       requestQueueSolve,
       clearQueueSeed,

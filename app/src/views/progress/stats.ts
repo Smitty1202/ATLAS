@@ -7,7 +7,7 @@ import type {
   SaveSummary,
   SpeciesEntry,
 } from "../../lib/types";
-import { buildPois, type DefeatCount } from "../map/pins";
+import { buildPois, type DefeatCount, type PoiPin } from "../map/pins";
 
 export interface RatioStat {
   found: number;
@@ -51,6 +51,45 @@ export interface PalCollectionProgress {
   discovered: PalCollectionItem[];
   undiscovered: PalCollectionItem[];
   captureStats: CaptureStats;
+}
+
+export type MissingWorldObjectiveCategoryKey =
+  | "fastTravel"
+  | "effigies"
+  | "fieldBosses"
+  | "wantedFugitives"
+  | "towerRegions";
+
+export type MissingWorldObjectiveFilter =
+  | "fastTravel"
+  | "alpha"
+  | "effigies"
+  | "bounties"
+  | "towers";
+
+export interface MissingWorldObjective {
+  id: string;
+  name: string;
+  typeLabel: string;
+  detail: string;
+  level?: number;
+  layer: string;
+  x: number;
+  y: number;
+  focusFilter: MissingWorldObjectiveFilter;
+}
+
+export interface MissingWorldObjectiveCategory {
+  key: MissingWorldObjectiveCategoryKey;
+  label: string;
+  found: number;
+  total: number;
+  joined: boolean;
+  missing: MissingWorldObjective[];
+}
+
+export interface MissingWorldObjectivesProgress {
+  categories: MissingWorldObjectiveCategory[];
 }
 
 function ownerHex(pal: OwnedPal): string | null {
@@ -134,6 +173,57 @@ function defeatStat(stat: DefeatCount | undefined, fallbackTotal: number): Joine
   };
 }
 
+function hasGuid(point: { guid?: string | null }): boolean {
+  return typeof point.guid === "string" && point.guid.trim() !== "";
+}
+
+function allHaveGuid(points: { guid?: string | null }[]): boolean {
+  return points.length > 0 && points.every(hasGuid);
+}
+
+function allHaveKey(points: { key?: string | null }[]): boolean {
+  return points.length > 0 && points.every((p) => !!p.key?.trim());
+}
+
+function humanizeToken(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/^EPalRelicType::/, "")
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pinObjective(
+  pin: PoiPin,
+  typeLabel: string,
+  detail: string,
+  focusFilter: MissingWorldObjectiveFilter,
+  name: string | null | undefined,
+): MissingWorldObjective {
+  return {
+    id: `${pin.kind}:${pin.key}`,
+    name: name?.trim() || typeLabel,
+    typeLabel,
+    detail,
+    ...(pin.level != null ? { level: pin.level } : {}),
+    layer: pin.map,
+    x: pin.x,
+    y: pin.y,
+    focusFilter,
+  };
+}
+
+function missingFromPins(
+  pins: PoiPin[],
+  kind: PoiPin["kind"],
+  joined: boolean,
+  toObjective: (pin: PoiPin) => MissingWorldObjective,
+): MissingWorldObjective[] {
+  if (!joined) return [];
+  return pins.filter((pin) => pin.kind === kind && !pin.found).map(toObjective);
+}
+
 export function buildProgressStats(
   summary: SaveSummary,
   species: SpeciesEntry[],
@@ -162,6 +252,122 @@ export function buildProgressStats(
     fieldBosses: defeatStat(counts.fieldBosses, counts.alphas),
     wantedFugitives: defeatStat(counts.wantedFugitives, counts.bounties),
     towerRegions: counts.towers,
+  };
+}
+
+export function buildMissingWorldObjectives(
+  mapData: MapData,
+  mapState: MapState,
+  playerScope: string,
+  species: SpeciesEntry[],
+): MissingWorldObjectivesProgress {
+  const { pins, counts } = buildPois(mapData, mapState, playerScope);
+  const speciesNames = new Map(species.map((sp) => [sp.id, sp.name]));
+  const fastTravelJoined = allHaveGuid(mapData.fast_travel);
+  const effigiesJoined = allHaveGuid(mapData.effigies);
+  const fieldBosses = counts.fieldBosses ?? {
+    found: 0,
+    total: mapData.bosses.length,
+    joined: false,
+  };
+  const wantedFugitives = counts.wantedFugitives ?? {
+    found: 0,
+    total: mapData.bounties?.length ?? 0,
+    joined: false,
+  };
+  const towers = mapData.towers ?? [];
+  const towerJoined = allHaveKey(towers);
+
+  return {
+    categories: [
+      {
+        key: "fastTravel",
+        label: "Fast Travel",
+        found: counts.fastTravel.found,
+        total: counts.fastTravel.total,
+        joined: fastTravelJoined,
+        missing: missingFromPins(pins, "fast_travel", fastTravelJoined, (pin) =>
+          pinObjective(
+            pin,
+            "Fast Travel",
+            "Locked",
+            "fastTravel",
+            pin.name ?? "Fast Travel Point",
+          ),
+        ),
+      },
+      {
+        key: "effigies",
+        label: "Effigies",
+        found: counts.effigies.found,
+        total: counts.effigies.total,
+        joined: effigiesJoined,
+        missing: missingFromPins(pins, "effigy", effigiesJoined, (pin) =>
+          pinObjective(
+            pin,
+            "Effigy",
+            humanizeToken(pin.effigyType) || "Uncollected",
+            "effigies",
+            pin.name ?? "Effigy",
+          ),
+        ),
+      },
+      {
+        key: "fieldBosses",
+        label: "Field Bosses",
+        found: fieldBosses.found,
+        total: fieldBosses.total,
+        joined: fieldBosses.joined,
+        missing: missingFromPins(pins, "alpha", fieldBosses.joined, (pin) => {
+          const speciesName = pin.speciesId
+            ? speciesNames.get(pin.speciesId) ?? pin.speciesId
+            : null;
+          return pinObjective(
+            pin,
+            "Field Boss",
+            pin.level != null ? `Lv ${pin.level}` : "Defeat not recorded",
+            "alpha",
+            speciesName,
+          );
+        }),
+      },
+      {
+        key: "wantedFugitives",
+        label: "Wanted Fugitives",
+        found: wantedFugitives.found,
+        total: wantedFugitives.total,
+        joined: wantedFugitives.joined,
+        missing: missingFromPins(
+          pins,
+          "bounty",
+          wantedFugitives.joined,
+          (pin) =>
+            pinObjective(
+              pin,
+              "Wanted Fugitive",
+              "Defeat not recorded",
+              "bounties",
+              pin.name ?? "Wanted Fugitive",
+            ),
+        ),
+      },
+      {
+        key: "towerRegions",
+        label: "Tower Regions",
+        found: counts.towers.found,
+        total: counts.towers.total,
+        joined: towerJoined,
+        missing: missingFromPins(pins, "tower", towerJoined, (pin) =>
+          pinObjective(
+            pin,
+            "Tower Region",
+            "Not reached",
+            "towers",
+            pin.name ?? "Syndicate Tower",
+          ),
+        ),
+      },
+    ],
   };
 }
 

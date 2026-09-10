@@ -4,11 +4,16 @@ import type { MapData } from "../lib/map-coords";
 import type { SpeciesEntry } from "../lib/types";
 import { invoke } from "../lib/tauri";
 import { useMapStateRefresh } from "../lib/use-map-state";
-import { useAppState } from "../state";
+import { useAppState, type MapFocusTarget } from "../state";
 import {
+  buildMissingWorldObjectives,
   buildPalCollectionProgress,
   buildProgressStats,
   type JoinedRatioStat,
+  type MissingWorldObjective,
+  type MissingWorldObjectiveCategory,
+  type MissingWorldObjectiveCategoryKey,
+  type MissingWorldObjectivesProgress,
   type PalCollectionBucket,
   type PalCollectionItem,
   type PalCollectionProgress,
@@ -117,6 +122,21 @@ const COLLECTION_BUCKETS: {
   { key: "undiscovered", label: "Undiscovered", sub: "Not seen" },
 ];
 
+const OBJECTIVE_CATEGORIES: MissingWorldObjectiveCategoryKey[] = [
+  "fastTravel",
+  "effigies",
+  "fieldBosses",
+  "wantedFugitives",
+  "towerRegions",
+];
+
+function emptyObjectiveState<T>(value: T): Record<MissingWorldObjectiveCategoryKey, T> {
+  return OBJECTIVE_CATEGORIES.reduce(
+    (out, key) => ({ ...out, [key]: value }),
+    {} as Record<MissingWorldObjectiveCategoryKey, T>,
+  );
+}
+
 function dexNo(item: PalCollectionItem): string {
   return Number.isFinite(item.paldexNo)
     ? `#${String(item.paldexNo).padStart(3, "0")}`
@@ -138,6 +158,157 @@ function filteredSpecies(
       item.name.toLowerCase().includes(q) ||
       String(item.paldexNo).includes(q) ||
       dexNo(item).toLowerCase().includes(q),
+  );
+}
+
+function layerLabel(layer: string): string {
+  if (layer === "MainMap") return "Palpagos";
+  if (layer === "Tree") return "World Tree";
+  return layer;
+}
+
+function objectiveStatus(category: MissingWorldObjectiveCategory): string {
+  if (category.total === 0) return "Unavailable";
+  if (!category.joined) return "Partial tracking";
+  if (category.missing.length === 0) return "Complete";
+  return `${category.missing.length} missing`;
+}
+
+function objectiveMatches(item: MissingWorldObjective, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    item.name,
+    item.typeLabel,
+    item.detail,
+    item.layer,
+    layerLabel(item.layer),
+    item.level != null ? `lv ${item.level}` : "",
+    item.level != null ? String(item.level) : "",
+  ].some((part) => part.toLowerCase().includes(q));
+}
+
+function filteredObjectives(
+  items: MissingWorldObjective[],
+  query: string,
+): MissingWorldObjective[] {
+  return items.filter((item) => objectiveMatches(item, query));
+}
+
+function mapFocusTarget(item: MissingWorldObjective): MapFocusTarget {
+  return {
+    id: item.id,
+    layer: item.layer,
+    x: item.x,
+    y: item.y,
+    filter: item.focusFilter,
+  };
+}
+
+function MissingObjectivesList({
+  objectives,
+  queries,
+  openCategories,
+  onQuery,
+  onToggle,
+  onOpenObjective,
+}: {
+  objectives: MissingWorldObjectivesProgress;
+  queries: Record<MissingWorldObjectiveCategoryKey, string>;
+  openCategories: Record<MissingWorldObjectiveCategoryKey, boolean>;
+  onQuery: (key: MissingWorldObjectiveCategoryKey, query: string) => void;
+  onToggle: (key: MissingWorldObjectiveCategoryKey, open: boolean) => void;
+  onOpenObjective: (target: MapFocusTarget) => void;
+}) {
+  return (
+    <div className="grid gap-3 xl:grid-cols-2">
+      {objectives.categories.map((category) => {
+        const query = queries[category.key] ?? "";
+        const hasQuery = query.trim() !== "";
+        const visible = filteredObjectives(category.missing, query);
+        const open = hasQuery || openCategories[category.key];
+        const status = objectiveStatus(category);
+        return (
+          <details
+            key={category.key}
+            open={open}
+            onToggle={(e) => {
+              if (!hasQuery) onToggle(category.key, e.currentTarget.open);
+            }}
+            className="overflow-hidden rounded-md border border-line bg-panel"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-b border-line bg-raised/45 px-3 py-2.5 marker:hidden">
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-semibold text-ink">
+                  {category.label}
+                </span>
+                <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                  {status}
+                </span>
+              </span>
+              <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-faint">
+                <span className="text-amber">{category.found}</span>
+                <span> / {category.total}</span>
+              </span>
+            </summary>
+
+            <div className="space-y-2 p-3">
+              <label className="flex min-w-0 flex-col gap-1">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                  Search
+                </span>
+                <input
+                  value={query}
+                  onChange={(e) => onQuery(category.key, e.currentTarget.value)}
+                  placeholder="Name, type, or level"
+                  disabled={!category.joined || category.missing.length === 0}
+                  className="rounded-md border border-line bg-abyss px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-amber/60 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+
+              {!category.joined ? (
+                <div className="rounded-md border border-line-soft bg-abyss/40 px-3 py-5 text-center text-[13px] text-ink-faint">
+                  Tracking partial/unavailable.
+                </div>
+              ) : category.missing.length === 0 ? (
+                <div className="rounded-md border border-line-soft bg-abyss/40 px-3 py-5 text-center text-[13px] text-ink-faint">
+                  Nothing unresolved.
+                </div>
+              ) : visible.length > 0 ? (
+                <ul className="grid max-h-80 gap-1 overflow-y-auto">
+                  {visible.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenObjective(mapFocusTarget(item))}
+                        className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-hover focus:bg-hover"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-ink">
+                            {item.name}
+                          </span>
+                          <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                            {item.typeLabel}
+                            {item.detail ? ` · ${item.detail}` : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                          {layerLabel(item.layer)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="rounded-md border border-line-soft bg-abyss/40 px-3 py-5 text-center text-[13px] text-ink-faint">
+                  No matches.
+                </div>
+              )}
+            </div>
+          </details>
+        );
+      })}
+    </div>
   );
 }
 
@@ -320,8 +491,15 @@ function CollectionList({
 }
 
 export default function Progress() {
-  const { saveDir, saveSummary, saveLoading, saveError, playerScope, requestDex } =
-    useAppState();
+  const {
+    saveDir,
+    saveSummary,
+    saveLoading,
+    saveError,
+    playerScope,
+    requestDex,
+    requestMapFocus,
+  } = useAppState();
   const { mapState, mapStateLoading, mapStateError } = useMapStateRefresh(saveDir);
   const [mapData, setMapData] = useState<MapData | null>(null);
   const [mapDataLoading, setMapDataLoading] = useState(true);
@@ -330,6 +508,18 @@ export default function Progress() {
   const [speciesLoading, setSpeciesLoading] = useState(true);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
   const [collectionQuery, setCollectionQuery] = useState("");
+  const [objectiveQueries, setObjectiveQueries] = useState<
+    Record<MissingWorldObjectiveCategoryKey, string>
+  >(() => emptyObjectiveState(""));
+  const [openObjectiveCategories, setOpenObjectiveCategories] = useState<
+    Record<MissingWorldObjectiveCategoryKey, boolean>
+  >(() => ({
+    ...emptyObjectiveState(false),
+    fastTravel: true,
+    fieldBosses: true,
+    wantedFugitives: true,
+    towerRegions: true,
+  }));
   const [openBuckets, setOpenBuckets] = useState<
     Record<PalCollectionBucket, boolean>
   >({
@@ -394,11 +584,20 @@ export default function Progress() {
     return buildPalCollectionProgress(saveSummary, species, playerScope);
   }, [saveSummary, species, speciesLoading, speciesError, playerScope]);
 
+  const missingObjectives = useMemo(() => {
+    if (!mapData || !mapState || speciesLoading || speciesError) return null;
+    return buildMissingWorldObjectives(mapData, mapState, playerScope, species);
+  }, [mapData, mapState, playerScope, species, speciesLoading, speciesError]);
+
   const scopedName = scopeLabel(playerScope, saveSummary?.players ?? []);
   const loadingProgress =
     saveSummary !== null &&
     (speciesLoading || mapDataLoading || mapStateLoading) &&
     !stats;
+  const loadingObjectives =
+    saveSummary !== null &&
+    (speciesLoading || mapDataLoading || mapStateLoading) &&
+    !missingObjectives;
   const progressError =
     speciesError ??
     mapDataError ??
@@ -529,6 +728,38 @@ export default function Progress() {
               </div>
             ) : (
               <LoadingBlock label="Loading progress" />
+            )}
+          </section>
+
+          <section className="mt-6">
+            <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.22em] text-ink-faint">
+              Missing World Objectives
+            </div>
+            {progressError ? (
+              <ErrorBlock
+                title="Missing objectives unavailable"
+                error={progressError}
+              />
+            ) : loadingObjectives ? (
+              <LoadingBlock label="Loading objectives" />
+            ) : missingObjectives ? (
+              <MissingObjectivesList
+                objectives={missingObjectives}
+                queries={objectiveQueries}
+                openCategories={openObjectiveCategories}
+                onQuery={(key, query) =>
+                  setObjectiveQueries((prev) => ({ ...prev, [key]: query }))
+                }
+                onToggle={(key, open) =>
+                  setOpenObjectiveCategories((prev) => ({
+                    ...prev,
+                    [key]: open,
+                  }))
+                }
+                onOpenObjective={requestMapFocus}
+              />
+            ) : (
+              <LoadingBlock label="Loading objectives" />
             )}
           </section>
 

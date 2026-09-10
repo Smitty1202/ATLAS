@@ -9,7 +9,11 @@ import type {
   SaveSummary,
   SpeciesEntry,
 } from "../../lib/types";
-import { buildPalCollectionProgress, buildProgressStats } from "./stats";
+import {
+  buildMissingWorldObjectives,
+  buildPalCollectionProgress,
+  buildProgressStats,
+} from "./stats";
 
 function guid(seed: number): Guid {
   return Array.from({ length: 16 }, (_, i) => (seed + i) & 0xff);
@@ -231,6 +235,94 @@ test("all-player progress unions lifetime captures and map flags", () => {
   expect(stats.fieldBosses).toEqual({ found: 1, total: 1, joined: true });
   expect(stats.wantedFugitives).toEqual({ found: 1, total: 1, joined: true });
   expect(stats.towerRegions).toEqual({ found: 1, total: 1, joined: true });
+});
+
+test("missing world objectives list unresolved authoritative POIs", () => {
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const mapState: MapState = {
+    fog: null,
+    local_source: null,
+    markers: [],
+    players: [
+      player(p1Hex, {
+        fast_travel_unlocked: ["FT_A"],
+        effigies_found: ["EF_A"],
+        bosses_defeated: ["BOSS_Hunter"],
+      }),
+    ],
+  };
+
+  const objectives = buildMissingWorldObjectives(mapData, mapState, p1Hex, species);
+  const byKey = new Map(objectives.categories.map((c) => [c.key, c]));
+
+  const fastTravel = byKey.get("fastTravel");
+  expect(fastTravel?.joined).toBe(true);
+  expect(fastTravel?.found).toBe(1);
+  expect(fastTravel?.total).toBe(2);
+  expect(byKey.get("fastTravel")?.missing).toEqual([
+    {
+      id: "fast_travel:ft1",
+      name: "Marsh",
+      typeLabel: "Fast Travel",
+      detail: "Locked",
+      layer: "MainMap",
+      x: 1,
+      y: 0,
+      focusFilter: "fastTravel",
+    },
+  ]);
+  expect(byKey.get("effigies")?.missing.map((item) => item.name)).toEqual([
+    "Lifmunk Effigy",
+  ]);
+  const missingBoss = byKey.get("fieldBosses")?.missing[0];
+  expect(missingBoss?.name).toBe("Lamball");
+  expect(missingBoss?.typeLabel).toBe("Field Boss");
+  expect(missingBoss?.detail).toBe("Lv 11");
+  expect(missingBoss?.level).toBe(11);
+  expect(missingBoss?.focusFilter).toBe("alpha");
+  expect(byKey.get("wantedFugitives")?.missing).toEqual([]);
+  const missingTower = byKey.get("towerRegions")?.missing[0];
+  expect(missingTower?.name).toBe("Rayne Tower");
+  expect(missingTower?.typeLabel).toBe("Tower Region");
+  expect(missingTower?.focusFilter).toBe("towers");
+});
+
+test("missing world objectives withhold missing lists for partial tracking", () => {
+  const partialMapData: MapData = {
+    ...mapData,
+    fast_travel: [
+      { x: 0, y: 0, map: "MainMap", name: "Plateau", guid: "FT_A" },
+      { x: 1, y: 0, map: "MainMap", name: "Marsh", guid: null },
+    ],
+    bosses: [
+      { x: 0, y: 2, map: "MainMap", species: "BOSS_SheepBall", level: 11 },
+    ],
+    towers: [
+      { x: 0, y: 4, map: "MainMap", key: null, name: "Rayne Tower" },
+    ],
+  };
+  const p1Hex = "0102030405060708090a0b0c0d0e0f10";
+  const mapState: MapState = {
+    fog: null,
+    local_source: null,
+    markers: [],
+    players: [player(p1Hex, {})],
+  };
+
+  const objectives = buildMissingWorldObjectives(
+    partialMapData,
+    mapState,
+    p1Hex,
+    species,
+  );
+  const byKey = new Map(objectives.categories.map((c) => [c.key, c]));
+
+  expect(byKey.get("fastTravel")?.joined).toBe(false);
+  expect(byKey.get("fastTravel")?.missing).toEqual([]);
+  expect(byKey.get("fieldBosses")?.joined).toBe(false);
+  expect(byKey.get("fieldBosses")?.missing).toEqual([]);
+  expect(byKey.get("towerRegions")?.joined).toBe(false);
+  expect(byKey.get("towerRegions")?.missing).toEqual([]);
 });
 
 test("pal collection classifies captured, discovered, and undiscovered species", () => {
