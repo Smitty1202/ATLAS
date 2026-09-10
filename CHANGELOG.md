@@ -3,9 +3,10 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
-## [0.1.0] - Unreleased
+## [0.2.0] - 2026-09-09
 
 ### Changed
+
 - Project derived from Pal Lab v1.10.1
   (`e21ec37f643e2ca913cbf2de4f5898bc5fef70d5`) as the ATLAS baseline.
 - Rebranded the current application as Smitty's ATLAS.
@@ -24,6 +25,7 @@ historical accuracy and upstream attribution.
 ## [1.10.1] - 2026-08-04
 
 ### Changed
+
 - **SFTP errors now quote the server.** When a host closes the session, the
   error includes the server's own stated reason (e.g.
   `server said: "Too many logins for 'user'"`), naming the exact limit
@@ -32,6 +34,7 @@ historical accuracy and upstream attribution.
 ## [1.10.0] - 2026-08-04
 
 ### Added
+
 - **Remembered SFTP logins.** Opt-in "Remember password" on the connect form
   stores your password (or key passphrase) in the OS credential vault
   (Windows Credential Manager) - never a file, never plaintext. With it set,
@@ -40,6 +43,7 @@ historical accuracy and upstream attribution.
   stored secret.
 
 ### Fixed
+
 - **Reconnecting to a dedicated server after closing the app** no longer
   fails with "error opening ssh channel: disconnected". Pal Lab previously
   dropped the connection without an SSH goodbye, so hosts that cap concurrent
@@ -51,6 +55,7 @@ historical accuracy and upstream attribution.
 ## [1.9.0] - 2026-08-03
 
 ### Added
+
 - **Captured humans are first-class.** Clicking a captured human (villager,
   merchant, syndicate thug, bounty target...) now opens a proper detail card -
   localized name, faction, level, HP/ATK/DEF, and base work suitabilities -
@@ -67,6 +72,7 @@ historical accuracy and upstream attribution.
 ## [1.8.1] - 2026-08-03
 
 ### Fixed
+
 - **SFTP world scan now handles hosting-provider layouts.** Game hosts often
   jail SFTP at a server root with the world buried at
   `/Pal/Saved/SaveGames/<id>/<world>` — deeper than the old 2-level scan, so
@@ -81,7 +87,8 @@ historical accuracy and upstream attribution.
 ## [1.8.0] - 2026-08-03
 
 ### Added
-- **Dedicated servers over SFTP (desktop).** New *Dedicated server (SFTP)*
+
+- **Dedicated servers over SFTP (desktop).** New _Dedicated server (SFTP)_
   button on the load screen: connect over SSH (password or key file), Pal Lab
   scans for worlds, loads yours live, and **polls every 60s** so the roster
   silently refreshes while you play — no more manual save-backup snapshots.
@@ -97,6 +104,7 @@ historical accuracy and upstream attribution.
   that.
 
 ### Changed
+
 - Advanced-station time costs (surgery, gender reverser, skill fruits) now
   default to **30 seconds** — matching real-world use — instead of 300+.
   Still tunable per station.
@@ -104,6 +112,7 @@ historical accuracy and upstream attribution.
 ## [1.7.0] - 2026-07-28
 
 ### Added
+
 - **The solver now explains itself.** Plan steps carry a per-egg odds
   breakdown (Passives / Move / IVs / Gender → expected eggs) in the step list
   and node panel — no more mystery percentages on egg chips.
@@ -124,6 +133,7 @@ historical accuracy and upstream attribution.
   community-measured).
 
 ### Changed
+
 - Move-only solves that previously returned multi-step "passive laundering"
   plans by default now return the fastest direct path (set Extra passives to
   ≤1/None to get the old behavior deliberately).
@@ -131,10 +141,11 @@ historical accuracy and upstream attribution.
 ## [1.6.0] - 2026-07-28
 
 ### Added
+
 - **Xbox / Game Pass saves, built in.** Pal Lab now reads the Windows Gaming
   Services (WGS) container store directly — no more converting with an
   external tool first.
-  - **Desktop:** an *Xbox / Game Pass* button on the load screen auto-detects
+  - **Desktop:** an _Xbox / Game Pass_ button on the load screen auto-detects
     the Game Pass save store (`%LOCALAPPDATA%\Packages\PocketpairInc.Palworld_…`),
     lists your worlds (name, players, last played), and loads the one you pick
     — one world loads immediately. Read-only: nothing is written, ever. The
@@ -151,23 +162,26 @@ historical accuracy and upstream attribution.
     see THIRD-PARTY-NOTICES).
 
 ### Changed
+
 - Dropping/pointing at a CNK save now just loads it; the old "convert with
   palworld-save-pal first" guidance is gone from the app and README.
 - Live save-watching is disabled for Xbox saves (the WGS store has no stable
   folder to watch); reload by reopening the world from the load screen.
 
 ### Known limitations
+
 - World Map fog-of-war is unavailable for Xbox saves this release.
-- Xbox *console* saves must sync to the PC Game Pass app once before Pal Lab
+- Xbox _console_ saves must sync to the PC Game Pass app once before Pal Lab
   can see them.
 
 ## [1.5.0] - 2026-07-27
 
 ### Added
+
 - **Attack-skill inheritance solving** — the first tool anywhere to plan for
   active skills. Add **Required moves** to a solver target and Pal Lab plans
   breeding paths that carry the move from a pal you own: it reads which pals
-  have the move *equipped* (the post-1.0 rule — inherited skills come from the
+  have the move _equipped_ (the post-1.0 rule — inherited skills come from the
   parents' equipped slots, per the official 1.0 patch notes), prices the
   inheritance roll into every egg estimate (~50%/egg, community-measured — and
   labeled as such), and threads the move through intermediate breeding steps
@@ -179,15 +193,16 @@ historical accuracy and upstream attribution.
   Advanced stations with your own time cost, and extra required moves beyond
   the one-inherit-per-line cap become `FRUIT` steps on the final pal.
 - **Pal-dex move flags** — every active skill now shows INHERIT / FRUIT chips.
-- **Shareable plan links.** *Copy link* (next to Copy code) wraps a plan code
+- **Shareable plan links.** _Copy link_ (next to Copy code) wraps a plan code
   in a URL; opening it boots straight into the Solver and re-solves the plan
-  against *your* save. The code rides the `#` fragment, so it never reaches
+  against _your_ save. The code rides the `#` fragment, so it never reaches
   server logs. Desktop copies link to the web app.
 - **Pal Lab is now an installable PWA.** The web app registers a service
   worker (hand-rolled, dependency-free): instant repeat loads, offline app
   shell, and Install-to-desktop/home-screen from the browser menu.
 
 ### Fixed
+
 - A shared plan link opened on a fresh boot now routes to the Solver
   automatically once the save loads (previously the import waited until you
   happened to open the Solver view).
@@ -195,6 +210,7 @@ historical accuracy and upstream attribution.
 ## [1.4.1] - 2026-07-27
 
 ### Added
+
 - **Surgery table + gender reverser as solver cost options.** The solver can
   now relax the terminal breeding step by implanting missing required passives
   (Surgery table) or flipping a parent's gender (gender reverser), each priced
@@ -204,17 +220,18 @@ historical accuracy and upstream attribution.
   remedy.
 - **Honest Mutations card.** A reference card documenting what's actually known
   about breeding mutations: roughly ~1% per egg (code-verified), and that the
-  outcome pools are *not* publicly decoded. No invented odds.
+  outcome pools are _not_ publicly decoded. No invented odds.
 - **Web save remembrance.** The browser app now remembers your save across
   visits in two tiers: a live folder handle (Chromium) for a one-gesture
   reload, and a universal IndexedDB byte snapshot that gives a one-click
-  **Restore** in *every* browser — including Firefox, Safari, and Brave — with
+  **Restore** in _every_ browser — including Firefox, Safari, and Brave — with
   no prompt at all.
 - **Classic-dialog escape hatch (web).** When File System Access is available
   but Chrome refuses the folder, the dropzone offers the blocklist-free
   `<input webkitdirectory>` chooser.
 
 ### Changed
+
 - **Web save parity.** The browser solver gained both new cost options, at full
   parity with desktop (verified live: a 0-step implant plan beats a 44h exact
   chain on test data).
@@ -223,18 +240,20 @@ historical accuracy and upstream attribution.
 - The picker remembers your last-picked location per origin.
 
 ### Fixed
+
 - **Chromium AppData blocklist handling.** Chromium's File System Access
   blocklist refuses handles anywhere under `AppData` (where Palworld saves
   actually live) for both the picker and drag-drop. A blocklisted drop now
   degrades gracefully to "no live handle" and still loads the bytes and stores
   a snapshot, instead of failing the load outright.
 - **Detached-ArrayBuffer snapshot race (web).** The IndexedDB snapshot is now
-  written *before* the save buffers are transferred to the worker (which
+  written _before_ the save buffers are transferred to the worker (which
   detaches them), fixing a silent `DataCloneError` that dropped remembrance.
 
 ## [1.4.0] - 2026-07-27
 
 ### Added
+
 - **Pal-dex PARTNER tab** — all 299 partner skills with per-rank values, search,
   and species cross-links.
 - **Passive multi-select filter parity on Palbox** — the shared passive picker
@@ -242,6 +261,7 @@ historical accuracy and upstream attribution.
   IV Lab.
 
 ### Fixed
+
 - **Condensation-rank off-by-one.** Fixed at the parser source: save Rank is
   1-based and was read as 0-based stars, so booster and star displays were off
   by one (a 1-star Grintale showed a 60% egg boost instead of the correct 55%).
@@ -252,6 +272,7 @@ historical accuracy and upstream attribution.
 ## [1.3.0] - 2026-07-27
 
 ### Added
+
 - **Pal Lab on the web.** A new `pal-web` wasm crate mirrors every desktop
   command through a Web Worker, so the full solver runs in the browser.
 - **Drag-drop / picker save loading**, parsed 100% client-side — your save
@@ -260,6 +281,7 @@ historical accuracy and upstream attribution.
   Pages.
 
 ### Changed
+
 - Single-source app version (from `package.json`); the sidebar chip now shows
   the live version on both platforms instead of a hardcoded `v1.0`.
 - Favicon and meta-description polish (app-icon favicon replaces the Vite
@@ -268,6 +290,7 @@ historical accuracy and upstream attribution.
 ## [1.2.0] - 2026-07-27
 
 ### Added
+
 - **Saved-plan tracking.** Saved plans auto-check their steps as you breed
   in-game (via the save watcher): node status badges, a progress percentage,
   and stale-parent warnings.
@@ -278,18 +301,21 @@ historical accuracy and upstream attribution.
   steps to reach each species from the pals you own.
 
 ### Changed
+
 - **Whole repo relicensed to MIT.** The vendored GPL-3 C++ `ooz` decompressor
   was swapped for the pure-Rust MIT [oozextract](https://github.com/lvlvllvlvllvlvl/oozextract);
   GPL-3 was the only thing forcing the previous license. Verified byte-identical
   against the C++ path across all 157 compressed files in the reference corpus.
 
 ### Fixed
+
 - Fixed a pre-existing Solver render loop that could spin with no save loaded.
 
 ## [1.1.0] - 2026-07-26
 
 ### Added
-- **No-path diagnostics.** When the solver finds no plan, it now explains *why*
+
+- **No-path diagnostics.** When the solver finds no plan, it now explains _why_
   — no owned carrier for a required passive, target species unreachable, step
   cap too low, gender bottleneck — instead of a bare "no line found". Shared by
   both Solver and IV Lab via one panel.
@@ -301,6 +327,7 @@ historical accuracy and upstream attribution.
   gender-flip steps.
 
 ### Fixed
+
 - **Solver out-of-memory crash.** A heavy IV solve (e.g. Ragnahawk 100/100/100
   with three passives) could balloon to 11 GB+ and get OOM-killed. Bounded
   memory (per-chunk reduction), step-budget reachability pruning, and a search
@@ -313,6 +340,7 @@ Initial release. A save-aware Palworld breeding planner for Windows (Tauri
 desktop).
 
 ### Added
+
 - **Breeding solver** that reads your actual save and computes optimal breeding
   paths from the pals you own (working-set DP), with a probability model
   validated against palcalc's numeric test oracles.
@@ -330,5 +358,6 @@ desktop).
 - **Read-only guarantee** — Pal Lab never writes Palworld save files.
 
 ### Note
+
 - Initially released under GPL-3.0 at the repo root, forced solely by the
   vendored C++ `ooz` decompressor. Relicensed to MIT in 1.2.0 (see above).

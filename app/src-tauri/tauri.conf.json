@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ATLAS",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "io.github.smitty1202.atlas",
   "mainBinaryName": "ATLAS",
   "build": {
@@ -36,3 +36,4 @@
     ]
   }
 }
+

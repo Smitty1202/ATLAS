@@ -1,6 +1,6 @@
 [package]
 name = "atlas"
-version = "0.1.0"
+version = "0.2.0"
 description = "Smitty's ATLAS desktop shell."
 authors = ["Smitty1202"]
 edition = "2021"
@@ -55,4 +55,5 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", 
 # MUST be opted into explicitly via `windows-native` — otherwise stored secrets
 # would silently not persist. Secrets NEVER touch a file or localStorage.
 keyring = { version = "3", features = ["windows-native"] }
+
 

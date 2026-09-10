@@ -135,30 +135,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "atlas"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "keyring",
- "notify",
- "pal-data",
- "pal-save",
- "pal-solver",
- "parking_lot",
- "png 0.17.16",
- "russh",
- "russh-sftp",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tokio",
- "ureq",
-]
-
-[[package]]
 name = "argon2"
 version = "0.6.0-rc.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,6 +298,30 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "atlas"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "keyring",
+ "notify",
+ "pal-data",
+ "pal-save",
+ "pal-solver",
+ "parking_lot",
+ "png 0.17.16",
+ "russh",
+ "russh-sftp",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tokio",
+ "ureq",
 ]
 
 [[package]]

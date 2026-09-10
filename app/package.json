@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Smitty's ATLAS - Palworld companion and save-analysis application.",
   "author": "Smitty1202",
   "type": "module",
@@ -32,3 +32,4 @@
     "vite": "^7.0.4"
   }
 }
+
