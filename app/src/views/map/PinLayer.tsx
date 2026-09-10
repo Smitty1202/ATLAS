@@ -32,8 +32,8 @@ import {
   type EffigyTypeSelection,
 } from "./effigy-filter";
 
-/** Per-layer visibility toggles (persisted by MapView). `hideUnfoundEffigies`
- *  is a spoiler modifier on the effigy layer, not a layer of its own. */
+/** Per-layer visibility toggles (persisted by MapView). Effigy found/unfound
+ *  modifiers are preferences on the effigy layer, not layers of their own. */
 export interface LayerFilters {
   fastTravel: boolean;
   alpha: boolean;
@@ -46,6 +46,8 @@ export interface LayerFilters {
   bases: boolean;
   /** When true, only collected effigies render (spoiler protection). */
   hideUnfoundEffigies: boolean;
+  /** When true, collected effigies are hidden to reduce map clutter. */
+  hideFoundEffigies?: boolean;
 }
 
 /** A player pin resolved to world coords + label (built by MapView). */
@@ -436,6 +438,8 @@ function PinLayer({
       )
         continue;
       if (pin.kind === "effigy" && filters.hideUnfoundEffigies && !pin.found)
+        continue;
+      if (pin.kind === "effigy" && filters.hideFoundEffigies && pin.found)
         continue;
       if (pin.kind === "bounty" && !filters.bounties) continue;
       if (pin.kind === "tower" && !filters.towers) continue;
