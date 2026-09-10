@@ -3,7 +3,7 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2026-09-10
 
 ### Added
 - Added a read-only Progress dashboard with active-scope Pal species, map

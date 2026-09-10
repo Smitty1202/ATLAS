@@ -1,6 +1,6 @@
 [package]
 name = "atlas"
-version = "0.3.0"
+version = "0.4.0"
 description = "Smitty's ATLAS desktop shell."
 authors = ["Smitty1202"]
 edition = "2021"
