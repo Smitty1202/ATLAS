@@ -715,6 +715,7 @@ export default function MapView() {
         );
       }
       clearTimeout(settleTimer.current);
+      clearTimeout(focusTimer.current);
       dragAbort.current?.abort();
     },
     [],
@@ -889,11 +890,6 @@ export default function MapView() {
         return false;
       }
 
-      setFilters((f) => ({
-        ...f,
-        [target.filter]: true,
-        ...(target.filter === "effigies" ? { hideUnfoundEffigies: false } : {}),
-      }));
       commitGesture();
 
       const { w, h } = viewportRef.current;
@@ -913,25 +909,31 @@ export default function MapView() {
   );
 
   useEffect(() => {
-    if (!mapFocusTarget) return;
-    if (!isLayerKey(mapFocusTarget.layer)) {
-      clearMapFocusTarget();
-      return;
-    }
-    if (mapFocusTarget.layer !== layer) {
-      selectLayer(mapFocusTarget.layer);
-      return;
-    }
-    if (applyMapFocus(mapFocusTarget)) clearMapFocusTarget();
-  }, [
-    mapFocusTarget,
-    layer,
-    selectLayer,
-    applyMapFocus,
-    clearMapFocusTarget,
-    viewport.w,
-    viewport.h,
-  ]);
+  if (!mapFocusTarget) return;
+  if (!isLayerKey(mapFocusTarget.layer)) {
+    clearLocalFocus();
+    clearMapFocusTarget();
+    return;
+  }
+  if (mapFocusTarget.layer !== layer) {
+    selectLayer(mapFocusTarget.layer);
+    return;
+  }
+  if (applyMapFocus(mapFocusTarget)) {
+    armLocalFocus(mapFocusTarget.id);
+    clearMapFocusTarget();
+  }
+}, [
+  mapFocusTarget,
+  layer,
+  selectLayer,
+  applyMapFocus,
+  clearMapFocusTarget,
+  clearLocalFocus,
+  armLocalFocus,
+  viewport.w,
+  viewport.h,
+]);
 
   // Stable callback so a memoized PinLayer can skip re-rendering all ~360 pins
   // on unrelated MapView state churn (coordinate readout on mousemove, spawn
@@ -1101,6 +1103,7 @@ export default function MapView() {
           <PinLayer
             entry={entry}
             containerRef={pinContainerRef}
+            focusedPoiId={focusedPoiId}
             layer={layer}
             k={view.k}
             tx={view.tx}

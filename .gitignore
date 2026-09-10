@@ -23,3 +23,7 @@ tools/pal-extract/*.dll
 Thumbs.db
 .DS_Store
 /outreach/
+
+# pal-boss-keys dev tool build output
+tools/pal-boss-keys/bin/
+tools/pal-boss-keys/obj/
