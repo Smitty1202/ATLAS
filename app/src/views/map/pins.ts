@@ -1,19 +1,13 @@
 // The POI pin model + the found/unlocked join (contract R3). This turns the pak
-// pin arrays (fast-travel statues, field bosses, effigies, bounties) plus the
-// save's per-player flag sets into a flat, layer-tagged pin list the overlay
-// renders, and computes the per-layer "found / total" counts the filter panel
-// shows.
+// pin arrays (fast-travel statues, field bosses, effigies, wanted fugitives)
+// plus the save's per-player flag sets into a flat, layer-tagged pin list the
+// overlay renders, and computes the per-layer found / total counts.
 //
-// R3 join semantics: each pak fast-travel / effigy POI in map-data.json carries
-// a `guid` — the world-static actor instance GUID, formatted as 32-char
-// UPPERCASE UE-Digits hex — that matches the keys in a player's
-// `fast_travel_unlocked` / `effigies_found` flag arrays EXACTLY. A pin is
-// "found/unlocked" for the current player scope iff some scoped player's flag
-// set contains that pin's guid (plain string equality — no coordinate join, no
-// radius). When a pin's guid is null (the extractor could not resolve one) that
-// pin renders neutral, and when NO POI carries a guid at all the counts fall
-// back to the raw flag-set sizes (honest "you've unlocked N" rather than a
-// fabricated per-pin state).
+// Fast travel and effigies join by exact world-static GUID. Field bosses and
+// wanted fugitives join against RecordData.NormalBossDefeatFlag. Current map
+// data carries a direct key for fugitives (`cid`); field-boss map exports may
+// carry `key`/`spawner_id`. Older map exports degrade conservatively to a
+// species-name match only when the save flag itself exposes that species name.
 
 import type { MapData } from "../../lib/map-coords";
 import type { MapState } from "../../lib/types";
@@ -30,13 +24,13 @@ export interface PoiPin {
   y: number;
   found: boolean;
   known: boolean;
-  /** Alpha or typed-effigy Pal internal species id. */
+  /** Field-boss or typed-effigy Pal internal species id. */
   speciesId?: string;
   /** Canonical Palworld relic type used by the effigy-type filter. */
   effigyType?: string;
-  /** Alpha only: field-boss level (hover chip). */
+  /** Field-boss level (hover chip). */
   level?: number;
-  /** Fast-travel / effigy / bounty / tower display name. */
+  /** Fast-travel / effigy / wanted-fugitive / tower display name. */
   name?: string | null;
 }
 
@@ -47,6 +41,13 @@ export interface EffigyTypeCount {
   total: number;
 }
 
+export interface DefeatCount {
+  found: number;
+  total: number;
+  /** True only when every map pin has an authoritative static defeat key. */
+  joined: boolean;
+}
+
 /** Per-layer found/total counts for the filter panel rows. */
 export interface PoiCounts {
   fastTravel: { found: number; total: number };
@@ -54,6 +55,9 @@ export interface PoiCounts {
   /** Optional so older/fallback count objects degrade to no type rows. */
   effigyTypes?: EffigyTypeCount[];
   towers: { found: number; total: number; joined: boolean };
+  /** Current Palworld terminology; old numeric fields remain for compatibility. */
+  fieldBosses?: DefeatCount;
+  wantedFugitives?: DefeatCount;
   bounties: number;
   alphas: number;
   joined: boolean;
@@ -72,6 +76,12 @@ function unionFlags(
   return out;
 }
 
+function normalizedSet(values: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  for (const value of values) out.add(value.trim().toLowerCase());
+  return out;
+}
+
 function humanizeCid(cid: string): string {
   return cid
     .replace(/^BOSS_/, "")
@@ -87,8 +97,15 @@ type EffigyPayload = {
   class?: string | null;
 };
 
+type BossPayload = {
+  /** Preferred current exporter field. */
+  key?: string | null;
+  /** Accepted alias for future/alternate map exports. */
+  spawner_id?: string | null;
+};
+
 /** Current Palworld relic-type -> Pal mapping. Unknown future types are still
- *  shown by a humanized type name rather than being mislabeled as Lifmunk. */
+ * shown by a humanized type name rather than being mislabeled as Lifmunk. */
 const EFFIGY_PAL_NAMES: Record<string, string> = {
   CapturePower: "Lifmunk",
   HungerReduction: "Lamball",
@@ -123,6 +140,29 @@ function effigySpeciesId(actorClass: string | null | undefined): string | undefi
   return match?.[1];
 }
 
+function directBossKey(boss: BossPayload): string | null {
+  const raw = boss.key ?? boss.spawner_id ?? null;
+  return raw && raw.trim() ? raw.trim() : null;
+}
+
+/**
+ * Compatibility join for map-data generated before field-boss SpawnerID was
+ * exported. It never guesses numeric legacy keys: a flag must literally expose
+ * the boss species at its tail (e.g. `..._F_Boss_FairyDragon`).
+ */
+function defeatedFlagNamesSpecies(flag: string, species: string): boolean {
+  const f = flag.trim().toLowerCase();
+  const s = baseSpeciesId(species).trim().toLowerCase();
+  if (!s) return false;
+  return (
+    f === `boss_${s}` ||
+    f.endsWith(`_boss_${s}`) ||
+    f.endsWith(`_f_boss_${s}`) ||
+    f.endsWith(`_fieldboss_${s}`) ||
+    f.endsWith(`_fboss_${s}`)
+  );
+}
+
 export function buildPois(
   data: MapData,
   state: MapState | null,
@@ -131,6 +171,8 @@ export function buildPois(
   const players = state?.players ?? [];
   const unlockedFt = unionFlags(players, scope, (p) => p.fast_travel_unlocked);
   const foundEff = unionFlags(players, scope, (p) => p.effigies_found);
+  const defeatedBossFlags = unionFlags(players, scope, (p) => p.bosses_defeated ?? []);
+  const defeatedBossFlagsCi = normalizedSet(defeatedBossFlags);
   const conqueredTowers = unionFlags(players, scope, (p) =>
     "towers_defeated" in p && Array.isArray(p.towers_defeated)
       ? p.towers_defeated
@@ -190,30 +232,45 @@ export function buildPois(
     });
   });
 
+  let fieldBossFound = 0;
+  let fieldBossAuthoritativeKeys = 0;
   data.bosses.forEach((b, i) => {
+    const payload = b as typeof b & BossPayload;
+    const directKey = directBossKey(payload);
+    if (directKey) fieldBossAuthoritativeKeys++;
+    const found = directKey
+      ? defeatedBossFlagsCi.has(directKey.toLowerCase())
+      : [...defeatedBossFlags].some((flag) => defeatedFlagNamesSpecies(flag, b.species));
+    if (found) fieldBossFound++;
     pins.push({
       key: `bs${i}`,
       kind: "alpha",
       map: b.map,
       x: b.x,
       y: b.y,
-      found: false,
-      known: false,
+      found,
+      known: found,
       speciesId: baseSpeciesId(b.species),
       level: b.level,
     });
   });
 
   const bounties = data.bounties ?? [];
+  let wantedFound = 0;
+  let wantedKeyed = 0;
   bounties.forEach((p, i) => {
+    const defeatKey = p.cid?.trim() || null;
+    if (defeatKey) wantedKeyed++;
+    const found = defeatKey != null && defeatedBossFlagsCi.has(defeatKey.toLowerCase());
+    if (found) wantedFound++;
     pins.push({
       key: `bt${i}`,
       kind: "bounty",
       map: p.map,
       x: p.x,
       y: p.y,
-      found: false,
-      known: false,
+      found,
+      known: found,
       name: p.name ?? (p.cid ? humanizeCid(p.cid) : null),
     });
   });
@@ -260,6 +317,18 @@ export function buildPois(
       total: hasTowerKeys ? keyedTowers : towers.length,
       joined: hasTowerKeys,
     },
+    fieldBosses: {
+      found: fieldBossFound,
+      total: data.bosses.length,
+      joined: data.bosses.length > 0 && fieldBossAuthoritativeKeys === data.bosses.length,
+    },
+    wantedFugitives: {
+      found: wantedFound,
+      total: bounties.length,
+      joined: bounties.length > 0 && wantedKeyed === bounties.length,
+    },
+    // Deprecated internal count aliases retained so older components/tests do
+    // not break while the visible UI uses current Palworld terminology.
     bounties: bounties.length,
     alphas: data.bosses.length,
     joined,

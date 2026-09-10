@@ -124,6 +124,26 @@ export default function FilterPanel({
   const ft = counts.fastTravel;
   const ef = counts.effigies;
   const tw = counts.towers;
+  const fieldBosses = counts.fieldBosses ?? {
+    found: 0,
+    total: counts.alphas,
+    joined: false,
+  };
+  const wantedFugitives = counts.wantedFugitives ?? {
+    found: 0,
+    total: counts.bounties,
+    joined: false,
+  };
+  const fieldBossCount = fieldBosses.joined
+    ? `${fieldBosses.found}/${fieldBosses.total}`
+    : fieldBosses.found > 0
+      ? `${fieldBosses.found}+/${fieldBosses.total}`
+      : String(fieldBosses.total);
+  const wantedCount = wantedFugitives.joined
+    ? `${wantedFugitives.found}/${wantedFugitives.total}`
+    : wantedFugitives.found > 0
+      ? `${wantedFugitives.found}+/${wantedFugitives.total}`
+      : String(wantedFugitives.total);
   const effigyTypes = counts.effigyTypes ?? [];
   const hideUnfound = filters.hideUnfoundEffigies;
   const hideFound = filters.hideFoundEffigies ?? false;
@@ -203,8 +223,14 @@ export default function FilterPanel({
       <Row
         on={filters.alpha}
         onToggle={() => setFilter("alpha", !filters.alpha)}
-        label="Alpha Pals"
-        count={String(counts.alphas)}
+        label="Field Bosses"
+        count={fieldBossCount}
+        countTitle={
+          fieldBosses.joined
+            ? "Defeated / total"
+            : "Defeated count is partial until all field-boss SpawnerIDs are present in map data"
+        }
+        dimCount={!fieldBosses.joined}
       />
       <Row
         on={filters.effigies}
@@ -328,8 +354,14 @@ export default function FilterPanel({
         <Row
           on={filters.bounties}
           onToggle={() => setFilter("bounties", !filters.bounties)}
-          label="Bounties"
-          count={String(counts.bounties)}
+          label="Wanted Fugitives"
+          count={wantedCount}
+          countTitle={
+            wantedFugitives.joined
+              ? "Defeated / total"
+              : "Defeated count is partial when a wanted-fugitive defeat key is unavailable"
+          }
+          dimCount={!wantedFugitives.joined}
         />
       )}
       {tw.total > 0 && (
