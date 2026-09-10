@@ -1,0 +1,248 @@
+name: Release ATLAS v0.4.0 Retry
+
+on:
+  push:
+    branches:
+      - wip/slice6
+    paths:
+      - .github/workflows/release-v0.4.0-retry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: 0.4.0
+      TAG: v0.4.0
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "app/src-tauri -> target"
+
+      - name: Guard release identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Tag $env:TAG already exists." }
+          $global:LASTEXITCODE = 0
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $env:TAG already exists." }
+          $global:LASTEXITCODE = 0
+
+      - name: Prepare release identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Replace-Exact([string]$Path, [string]$Old, [string]$New) {
+            $text = Get-Content -LiteralPath $Path -Raw
+            $count = ([regex]::Matches($text, [regex]::Escape($Old))).Count
+            if ($count -ne 1) { throw "$Path expected one '$Old', found $count" }
+            [IO.File]::WriteAllText((Resolve-Path $Path), $text.Replace($Old, $New), [Text.UTF8Encoding]::new($false))
+          }
+          Replace-Exact "app/package.json" '"version": "0.3.0"' '"version": "0.4.0"'
+          Replace-Exact "app/src-tauri/tauri.conf.json" '"version": "0.3.0"' '"version": "0.4.0"'
+          Replace-Exact "app/src-tauri/Cargo.toml" 'version = "0.3.0"' 'version = "0.4.0"'
+          Replace-Exact "app/src-tauri/src/updater.rs" 'const UPDATE_USER_AGENT: &str = "Smittys-ATLAS/0.3.0";' 'const UPDATE_USER_AGENT: &str = "Smittys-ATLAS/0.4.0";'
+          Replace-Exact "CHANGELOG.md" '## [0.4.0] - Unreleased' '## [0.4.0] - 2026-09-10'
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Frontend tests
+        working-directory: app
+        run: bun test
+
+      - name: Capture progress parser tests
+        shell: pwsh
+        run: |
+          cargo test -p pal-save pal_capture
+          cargo test -p pal-save paldeck
+          cargo test -p pal-web summary_surfaces_player_capture_progress
+
+      - name: Build release binaries
+        working-directory: app
+        run: bun run tauri build
+
+      - name: Package and hash artifacts
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $targetDir = "app/src-tauri/target/release"
+          $setup = Get-ChildItem "$targetDir/bundle/nsis" -Filter "ATLAS_$($env:VERSION)_x64-setup.exe" -File | Select-Object -First 1
+          $exe = Get-ChildItem $targetDir -Filter "ATLAS.exe" -File | Select-Object -First 1
+          if (-not $setup -or -not $exe) { throw "Expected ATLAS release outputs were not found." }
+          $portable = Join-Path $env:RUNNER_TEMP "ATLAS_$($env:VERSION)_portable_x64.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath $portable -Force
+          $setupHash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLowerInvariant()
+          "setup=$($setup.FullName)" >> $env:GITHUB_OUTPUT
+          "exe=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "portable=$portable" >> $env:GITHUB_OUTPUT
+          "setup_hash=$setupHash" >> $env:GITHUB_OUTPUT
+          "exe_hash=$exeHash" >> $env:GITHUB_OUTPUT
+          "portable_hash=$portableHash" >> $env:GITHUB_OUTPUT
+          Write-Host "Installer SHA-256: $setupHash"
+          Write-Host "ATLAS.exe SHA-256: $exeHash"
+          Write-Host "Portable SHA-256: $portableHash"
+
+      - name: Defender scan built artifacts
+        id: defender_pre
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Warning "Windows Defender cmdlets unavailable; release will remain draft."
+            exit 0
+          }
+          try {
+            Start-MpScan -ScanType CustomScan -ScanPath "${{ steps.package.outputs.setup }}"
+            Start-MpScan -ScanType CustomScan -ScanPath "${{ steps.package.outputs.exe }}"
+          } catch {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Warning "Windows Defender scan failed; release will remain draft: $($_.Exception.Message)"
+            exit 0
+          }
+          $names = @(
+            [IO.Path]::GetFileName("${{ steps.package.outputs.setup }}"),
+            [IO.Path]::GetFileName("${{ steps.package.outputs.exe }}")
+          )
+          $hits = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            $resources = @($_.Resources) -join "`n"
+            @($names | Where-Object { $resources -like "*$_*" }).Count -gt 0
+          })
+          if ($hits.Count -gt 0) {
+            $hits | Format-List *
+            throw "Windows Defender reported a threat in the v0.4.0 build. Release blocked."
+          }
+          "available=true" >> $env:GITHUB_OUTPUT
+          Write-Host "Windows Defender reported no detections for the built installer or executable."
+
+      - name: Verify source diff and commit release
+        id: commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expected = @(
+            "CHANGELOG.md",
+            "app/package.json",
+            "app/src-tauri/Cargo.lock",
+            "app/src-tauri/Cargo.toml",
+            "app/src-tauri/src/updater.rs",
+            "app/src-tauri/tauri.conf.json"
+          )
+          $changed = @(git diff --name-only HEAD | ForEach-Object { $_.Trim().Replace('\','/') } | Where-Object { $_ } | Sort-Object -Unique)
+          $unexpected = @($changed | Where-Object { $_ -notin $expected })
+          if ($unexpected.Count -gt 0) { throw "Unexpected tracked release changes: $($unexpected -join ', ')" }
+          foreach ($path in $expected) {
+            if ($path -notin $changed) { throw "Expected release change missing: $path" }
+          }
+          git config user.name "Smitty1202"
+          git config user.email "jackerman52@gmail.com"
+          git add -- $expected
+          git commit -m "Release ATLAS v0.4.0"
+          $sha = (git rev-parse HEAD).Trim()
+          git push origin HEAD:main
+          git tag -a $env:TAG -m "Smitty's ATLAS $env:VERSION"
+          git push origin $env:TAG
+          "sha=$sha" >> $env:GITHUB_OUTPUT
+          Write-Host "Release commit: $sha"
+
+      - name: Create draft release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $notes = @"
+          ## Smitty's ATLAS 0.4.0
+
+          ### Highlights
+          - New Progress dashboard with scoped world, player, base, owned-Pal, and map completion statistics.
+          - Lifetime capture tracking from Palworld player save data, including Pal Collection classification and most-captured statistics.
+          - Missing World Objectives for Effigies, Fast Travel, Field Bosses, Wanted Fugitives, and Tower Regions.
+          - One-click objective map focus that temporarily reveals only the selected POI without exposing neighboring hidden pins.
+
+          ### SHA-256
+          - Installer: `${{ steps.package.outputs.setup_hash }}`
+          - Portable ZIP: `${{ steps.package.outputs.portable_hash }}`
+          - Raw ATLAS.exe: `${{ steps.package.outputs.exe_hash }}`
+
+          ### Windows security
+          ATLAS is currently unsigned, so Windows SmartScreen may show an unknown-publisher warning. If Microsoft Defender reports a malware detection, do **not** bypass or allow it; verify the artifact hash and report the detection before running the file.
+
+          **Full Changelog:** https://github.com/Smitty1202/ATLAS/compare/v0.3.0...v0.4.0
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
+          gh release create $env:TAG `
+            "${{ steps.package.outputs.setup }}" `
+            "${{ steps.package.outputs.portable }}" `
+            --repo $env:GITHUB_REPOSITORY `
+            --title $env:TAG `
+            --notes-file $notesPath `
+            --draft
+
+      - name: Re-download and verify exact release artifacts
+        id: defender_post
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $verify = Join-Path $env:RUNNER_TEMP "verify-v040"
+          New-Item -ItemType Directory -Path $verify -Force | Out-Null
+          gh release download $env:TAG --repo $env:GITHUB_REPOSITORY --dir $verify
+          $setup = (Resolve-Path (Join-Path $verify "ATLAS_$($env:VERSION)_x64-setup.exe")).Path
+          $portable = (Resolve-Path (Join-Path $verify "ATLAS_$($env:VERSION)_portable_x64.zip")).Path
+          $setupHash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($setupHash -ne "${{ steps.package.outputs.setup_hash }}") { throw "Downloaded installer hash mismatch." }
+          if ($portableHash -ne "${{ steps.package.outputs.portable_hash }}") { throw "Downloaded portable hash mismatch." }
+          if ("${{ steps.defender_pre.outputs.available }}" -ne "true") {
+            "clean=false" >> $env:GITHUB_OUTPUT
+            Write-Warning "Exact assets verified by hash, but Defender was unavailable; release stays draft."
+            exit 0
+          }
+          [IO.File]::WriteAllText("${setup}:Zone.Identifier", "[ZoneTransfer]`r`nZoneId=3`r`n")
+          try {
+            Start-MpScan -ScanType CustomScan -ScanPath $setup
+          } catch {
+            "clean=false" >> $env:GITHUB_OUTPUT
+            Write-Warning "Post-download Defender scan failed; release stays draft: $($_.Exception.Message)"
+            exit 0
+          }
+          $hits = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            (@($_.Resources) -join "`n") -like "*ATLAS_$($env:VERSION)_x64-setup.exe*"
+          })
+          if ($hits.Count -gt 0) {
+            $hits | Format-List *
+            "clean=false" >> $env:GITHUB_OUTPUT
+            Write-Warning "Defender detected the exact re-downloaded installer. Release stays draft."
+            exit 0
+          }
+          "clean=true" >> $env:GITHUB_OUTPUT
+          Write-Host "Exact uploaded installer hash matched and Defender reported no detection with Mark-of-the-Web applied."
+
+      - name: Publish verified release
+        if: steps.defender_post.outputs.clean == 'true'
+        shell: pwsh
+        run: |
+          gh release edit $env:TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          Write-Host "Published $env:TAG as the latest ATLAS release."
