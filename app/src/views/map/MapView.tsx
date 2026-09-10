@@ -67,6 +67,7 @@ const SHOW_HIDDEN_KEY = "atlas.mapShowHidden";
 const FOG_ON_KEY = "atlas.mapFogOn";
 const MAP_LAYER_KEY = "atlas.mapLayer";
 const MAP_VIEWS_KEY = "atlas.mapViews";
+const FOCUS_HIGHLIGHT_MS = 6500;
 
 const DEFAULT_FILTERS: LayerFilters = {
   fastTravel: true,
@@ -230,6 +231,10 @@ export default function MapView() {
     sy: number;
     dot: SpawnDot;
   } | null>(null);
+  const [focusedPoiId, setFocusedPoiId] = useState<string | null>(null);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   const [view, setView] = useState<ViewTransform>({ k: 0.1, tx: 0, ty: 0 });
   const viewRef = useRef(view); // committed transform (mirrors `view`; kCommitted for gesture math)
@@ -264,6 +269,21 @@ export default function MapView() {
   const bitmapCache = useRef<Map<string, ImageBitmap>>(new Map());
 
   const entry: MapEntry | null = mapData?.maps[layer] ?? null;
+
+  const clearLocalFocus = useCallback(() => {
+    clearTimeout(focusTimer.current);
+    focusTimer.current = undefined;
+    setFocusedPoiId(null);
+  }, []);
+
+  const armLocalFocus = useCallback((id: string) => {
+    clearTimeout(focusTimer.current);
+    setFocusedPoiId(id);
+    focusTimer.current = setTimeout(() => {
+      setFocusedPoiId((current) => (current === id ? null : current));
+      focusTimer.current = undefined;
+    }, FOCUS_HIGHLIGHT_MS);
+  }, []);
 
   // --- Load the map manifest + icons once (shared cached loaders). ---------
   useEffect(() => {
@@ -331,10 +351,11 @@ export default function MapView() {
   // --- Consume a one-shot dex -> map spawn target. -------------------------
   useEffect(() => {
     if (!mapSpawnTarget) return;
+    clearLocalFocus();
     setSpawnSpecies(mapSpawnTarget);
     setFilters((f) => (f.spawns ? f : { ...f, spawns: true }));
     clearMapSpawnTarget();
-  }, [mapSpawnTarget, clearMapSpawnTarget]);
+  }, [mapSpawnTarget, clearMapSpawnTarget, clearLocalFocus]);
 
   // --- Load (and cache) the active layer's image lazily. ------------------
   useEffect(() => {
@@ -694,6 +715,7 @@ export default function MapView() {
         );
       }
       clearTimeout(settleTimer.current);
+      clearTimeout(focusTimer.current);
       dragAbort.current?.abort();
     },
     [],
@@ -868,11 +890,6 @@ export default function MapView() {
         return false;
       }
 
-      setFilters((f) => ({
-        ...f,
-        [target.filter]: true,
-        ...(target.filter === "effigies" ? { hideUnfoundEffigies: false } : {}),
-      }));
       commitGesture();
 
       const { w, h } = viewportRef.current;
@@ -892,25 +909,31 @@ export default function MapView() {
   );
 
   useEffect(() => {
-    if (!mapFocusTarget) return;
-    if (!isLayerKey(mapFocusTarget.layer)) {
-      clearMapFocusTarget();
-      return;
-    }
-    if (mapFocusTarget.layer !== layer) {
-      selectLayer(mapFocusTarget.layer);
-      return;
-    }
-    if (applyMapFocus(mapFocusTarget)) clearMapFocusTarget();
-  }, [
-    mapFocusTarget,
-    layer,
-    selectLayer,
-    applyMapFocus,
-    clearMapFocusTarget,
-    viewport.w,
-    viewport.h,
-  ]);
+  if (!mapFocusTarget) return;
+  if (!isLayerKey(mapFocusTarget.layer)) {
+    clearLocalFocus();
+    clearMapFocusTarget();
+    return;
+  }
+  if (mapFocusTarget.layer !== layer) {
+    selectLayer(mapFocusTarget.layer);
+    return;
+  }
+  if (applyMapFocus(mapFocusTarget)) {
+    armLocalFocus(mapFocusTarget.id);
+    clearMapFocusTarget();
+  }
+}, [
+  mapFocusTarget,
+  layer,
+  selectLayer,
+  applyMapFocus,
+  clearMapFocusTarget,
+  clearLocalFocus,
+  armLocalFocus,
+  viewport.w,
+  viewport.h,
+]);
 
   // Stable callback so a memoized PinLayer can skip re-rendering all ~360 pins
   // on unrelated MapView state churn (coordinate readout on mousemove, spawn
@@ -1080,6 +1103,7 @@ export default function MapView() {
           <PinLayer
             entry={entry}
             containerRef={pinContainerRef}
+            focusedPoiId={focusedPoiId}
             layer={layer}
             k={view.k}
             tx={view.tx}

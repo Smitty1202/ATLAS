@@ -15,7 +15,7 @@ import {
 } from "react";
 import { worldToPx, worldInBounds, type MapEntry } from "../../lib/map-coords";
 import { PalHoverCard } from "../../components/pal-hover-card";
-import { isRevealed, type FogMask } from "./fog";
+import type { FogMask } from "./fog";
 import {
   fallbackIcon,
   iconUrl,
@@ -25,9 +25,9 @@ import {
 } from "./icons";
 import { alphaIconUrl, palIconUrl, UNKNOWN_ICON } from "../../lib/assets";
 import type { PoiPin } from "./pins";
+import { resolveVisiblePois } from "./pin-visibility";
 import {
   EFFIGY_TYPES_EVENT,
-  effigyTypeIsVisible,
   readEffigyTypeSelection,
   type EffigyTypeSelection,
 } from "./effigy-filter";
@@ -58,7 +58,6 @@ export interface PlayerPin {
   y: number;
 }
 
-const CULL_MARGIN = 200;
 const CULL_STEP = 160;
 const LOW_ZOOM_K = 0.28;
 
@@ -320,18 +319,35 @@ function FieldBossNote({ level, defeated }: { level?: number; defeated: boolean 
   );
 }
 
+function FocusPulse() {
+  return (
+    <>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border-2 border-amber/80 bg-amber/20"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber shadow-lg"
+      />
+    </>
+  );
+}
+
 function AlphaPin({
   pin,
   left,
   top,
   icons,
   onOpenSpecies,
+  focused,
 }: {
   pin: PoiPin;
   left: number;
   top: number;
   icons: IconManifest | null;
   onOpenSpecies: (id: string) => void;
+  focused: boolean;
 }) {
   const badgeSrc = icons?.alpha_badge
     ? iconUrl(icons.alpha_badge)
@@ -341,10 +357,13 @@ function AlphaPin({
       type="button"
       tabIndex={-1}
       onClick={() => pin.speciesId && onOpenSpecies(pin.speciesId)}
-      className="group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+      className={`group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber ${
+        focused ? "z-20" : ""
+      }`}
       style={{ left, top }}
       aria-label={`Field Boss${pin.level != null ? `, level ${pin.level}` : ""}${pin.found ? ", defeated" : ""}`}
     >
+      {focused && <FocusPulse />}
       <span
         className="relative block transition-transform duration-150 ease-out"
         style={ZOOM_STYLE}
@@ -393,6 +412,7 @@ function PinLayer({
   icons,
   onOpenSpecies,
   containerRef,
+  focusedPoiId = null,
 }: {
   entry: MapEntry;
   layer: string;
@@ -412,8 +432,8 @@ function PinLayer({
   icons: IconManifest | null;
   onOpenSpecies: (id: string) => void;
   containerRef?: RefObject<HTMLDivElement | null>;
+  focusedPoiId?: string | null;
 }) {
-  const [W, H] = entry.px;
   const bx = Math.round(tx / CULL_STEP);
   const by = Math.round(ty / CULL_STEP);
   const lowZoom = k < LOW_ZOOM_K;
@@ -427,40 +447,23 @@ function PinLayer({
     return () => window.removeEventListener(EFFIGY_TYPES_EVENT, sync);
   }, []);
 
-  const spoilerHidden = (worldX: number, worldY: number, known: boolean) => {
-    if (!fogOn || !fog || known || showHidden) return false;
-    const [u, v] = worldToPx(entry, worldX, worldY);
-    return !isRevealed(fog, u / W, v / H);
-  };
-
   const visiblePois = useMemo(() => {
-    const minU = (-tx - CULL_MARGIN) / k;
-    const minV = (-ty - CULL_MARGIN) / k;
-    const maxU = (vw - tx + CULL_MARGIN) / k;
-    const maxV = (vh - ty + CULL_MARGIN) / k;
-    const out: { pin: PoiPin; left: number; top: number }[] = [];
-    for (const pin of pois) {
-      if (pin.map !== layer) continue;
-      if (pin.kind === "fast_travel" && !filters.fastTravel) continue;
-      if (pin.kind === "alpha" && !filters.alpha) continue;
-      if (pin.kind === "effigy" && !filters.effigies) continue;
-      if (
-        pin.kind === "effigy" &&
-        !effigyTypeIsVisible(effigySelection, pin.effigyType)
-      )
-        continue;
-      if (pin.kind === "effigy" && filters.hideUnfoundEffigies && !pin.found)
-        continue;
-      if (pin.kind === "effigy" && filters.hideFoundEffigies && pin.found)
-        continue;
-      if (pin.kind === "bounty" && !filters.bounties) continue;
-      if (pin.kind === "tower" && !filters.towers) continue;
-      const [u, v] = worldToPx(entry, pin.x, pin.y);
-      if (u < minU || u > maxU || v < minV || v > maxV) continue;
-      if (spoilerHidden(pin.x, pin.y, pin.known)) continue;
-      out.push({ pin, left: u * k, top: v * k });
-    }
-    return out;
+    return resolveVisiblePois({
+      entry,
+      layer,
+      k,
+      tx,
+      ty,
+      vw,
+      vh,
+      pois,
+      filters,
+      effigySelection,
+      fog,
+      fogOn,
+      showHidden,
+      focusedPoiId,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     pois,
@@ -476,6 +479,7 @@ function PinLayer({
     fogOn,
     showHidden,
     entry,
+    focusedPoiId,
   ]);
 
   const visiblePlayers = useMemo(() => {
@@ -571,7 +575,7 @@ function PinLayer({
           );
         })}
 
-        {visiblePois.map(({ pin, left, top }) =>
+        {visiblePois.map(({ pin, left, top, focused }) =>
           pin.kind === "alpha" ? (
             <AlphaPin
               key={pin.key}
@@ -580,13 +584,17 @@ function PinLayer({
               top={top}
               icons={icons}
               onOpenSpecies={onOpenSpecies}
+              focused={focused}
             />
           ) : (
             <div
               key={pin.key}
-              className="group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
+              className={`group pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 ${
+                focused ? "z-20" : ""
+              }`}
               style={{ left, top }}
             >
+              {focused && <FocusPulse />}
               <span
                 className="block transition-[transform,opacity] duration-150 ease-out"
                 style={pin.kind === "tower" ? ZOOM_STYLE : DIM_STYLE}

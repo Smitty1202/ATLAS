@@ -17,6 +17,10 @@ version is marked Unreleased.
 - Added Missing World Objectives to Progress with searchable unresolved map
   objectives and one-click focus on the matching World Map POI.
 
+### Changed
+- Objective map focus now reveals only the selected POI temporarily, without changing
+  global map filters or spoiler visibility for neighboring pins.
+
 ## [0.3.0] - 2026-09-10
 
 ### Added
