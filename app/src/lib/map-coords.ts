@@ -30,8 +30,8 @@ export interface MapEntry {
 }
 
 /** One wild-spawn location for a species: world `[x,y]`, spawn `r`adius (world
- *  units), level range `lv`, pack-size range `n`, and optional `time`/`weather`
- *  gates (`"night"` etc., or null = anytime). `boss` flags a field-boss spawn. */
+ * units), level range `lv`, pack-size range `n`, and optional `time`/`weather`
+ * gates (`"night"` etc., or null = anytime). `boss` flags a field-boss spawn. */
 export interface SpawnPoint {
   x: number;
   y: number;
@@ -44,29 +44,31 @@ export interface SpawnPoint {
 }
 
 /** All spawn points of one species on one map layer. `species` is the internal
- *  id (joins `/pals/<id>.png` and the pal-dex species id). */
+ * id (joins `/pals/<id>.png` and the pal-dex species id). */
 export interface SpawnEntry {
   species: string;
   map: string;
   points: SpawnPoint[];
 }
 
-/** A field-boss (alpha) location. `species` is `BOSS_<Internal>` (strip the
- *  case-insensitive `BOSS_` prefix for the pal-icon / dex id). */
+/** A Field Boss location. `species` is `BOSS_<Internal>` (strip the
+ * case-insensitive `BOSS_` prefix for the pal-icon / dex id). `key` is the
+ * exact DT_BossSpawnerLoactionData SpawnerID used by NormalBossDefeatFlag. */
 export interface BossEntry {
   species: string;
   x: number;
   y: number;
   level: number;
   map: string;
+  key?: string | null;
 }
 
-/** A world POI point: fast-travel statue, effigy, or bounty board. `name` is
- *  null for the unnamed (effigy) variety. `guid` is the world-static actor
- *  instance GUID (32-char UPPERCASE UE-Digits hex) that matches a player's
- *  save-side found/unlocked flag keys exactly (R1); it is absent/null on POIs
- *  the extractor could not resolve, and the found/unlocked join degrades to
- *  counts-only when no POI carries one. */
+/** A world POI point: fast-travel statue, effigy, or wanted-fugitive encounter.
+ * `name` is null for the unnamed (effigy) variety. `guid` is the world-static
+ * actor instance GUID (32-char UPPERCASE UE-Digits hex) that matches a player's
+ * save-side found/unlocked flag keys exactly (R1); it is absent/null on POIs
+ * the extractor could not resolve, and the found/unlocked join degrades to
+ * counts-only when no POI carries one. */
 export interface PoiPoint {
   x: number;
   y: number;
@@ -74,19 +76,18 @@ export interface PoiPoint {
   map: string;
   name?: string | null;
   guid?: string | null;
-  /** Bounty only: the wanted humanoid boss CharacterID (CamelCase, usually
-   *  `BOSS_`-prefixed). Bounty names are procedural (always null), so the UI
-   *  humanizes this into an enemy-type label. Absent on fast-travel/effigy. */
+  /** Wanted Fugitive only: the humanoid boss CharacterID/SpawnerID key used by
+   * NormalBossDefeatFlag. Names are procedural, so the UI humanizes this id. */
   cid?: string | null;
 }
 
 /** A syndicate-tower landmark POI (Map Wave 3). Towers are major in-game
- *  landmarks visible from the start, so they are NEVER fog-gated. `name` is the
- *  tower's display name (null when unnamed); `key` is the identifier that joins
- *  a tower to a player's `towers_defeated` flag set (TowerData/T1 — the exact
- *  RecordData-derived string), or null when no static join exists (the UI then
- *  degrades to neutral pins + a total-only count). Owned by MapData (this file);
- *  the array is populated by the extractor and may be absent on older data. */
+ * landmarks visible from the start, so they are NEVER fog-gated. `name` is the
+ * tower's display name (null when unnamed); `key` is the identifier that joins
+ * a tower to a player's `towers_defeated` flag set (TowerData/T1 — the exact
+ * RecordData-derived string), or null when no static join exists (the UI then
+ * degrades to neutral pins + a total-only count). Owned by MapData (this file);
+ * the array is populated by the extractor and may be absent on older data. */
 export interface TowerPoint {
   x: number;
   y: number;
@@ -96,8 +97,8 @@ export interface TowerPoint {
 }
 
 /** The whole `map-data.json` document. Wave 2 consumes every pin array; the
- *  optional `bounties` is appended by IconExtract only if bounty POI locations
- *  are found in the paks (contract C1), so it may be absent. */
+ * optional `bounties` is appended by IconExtract only if wanted-fugitive POI
+ * locations are found in the paks, so it may be absent. */
 export interface MapData {
   meta?: { game_build?: string; extracted_at?: string; usmap?: string };
   maps: Record<string, MapEntry>;
@@ -107,7 +108,7 @@ export interface MapData {
   fast_travel: PoiPoint[];
   bounties?: PoiPoint[];
   /** Syndicate-tower landmarks (Map Wave 3, TowerData/T1). Absent on data
-   *  extracted before towers were added; the UI degrades to no tower layer. */
+   * extracted before towers were added; the UI degrades to no tower layer. */
   towers?: TowerPoint[];
 }
 
@@ -177,9 +178,9 @@ export function worldInBounds(entry: MapEntry, wx: number, wy: number): boolean 
 }
 
 /** The in-game map coordinate readout — the numbers a player sees in-game.
- *  Palworld's UI is axis-swapped: the displayed X is derived from world Y, the
- *  displayed Y from world X. Constants are the game's own (verified in the probe
- *  contract), so this readout matches the in-client coordinate overlay. */
+ * Palworld's UI is axis-swapped: the displayed X is derived from world Y, the
+ * displayed Y from world X. Constants are the game's own (verified in the probe
+ * contract), so this readout matches the in-client coordinate overlay. */
 export function worldToInGame(
   wx: number,
   wy: number,
