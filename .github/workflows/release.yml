@@ -11,6 +11,13 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      # Tauri updater signing. The private key must NEVER be committed.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Public verification key is safe to share, but keeping it alongside the
+      # release-only config avoids baking a placeholder into source builds.
+      TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,31 +40,86 @@ jobs:
         working-directory: app
         run: bun install
 
-      - name: Build Tauri app
-        working-directory: app
-        run: bun run tauri build
+      - name: Validate release and configure signed updater
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
 
-      - name: Locate outputs and package portable
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "Missing GitHub Actions secret TAURI_SIGNING_PRIVATE_KEY. See docs/UPDATER.md."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_UPDATER_PUBKEY)) {
+            throw "Missing GitHub Actions secret TAURI_UPDATER_PUBKEY. See docs/UPDATER.md."
+          }
+
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$') {
+            throw "Release workflow must run from a vX.Y.Z tag; got '$tag'."
+          }
+          $version = $tag -replace '^v', ''
+          $configuredVersion = (Get-Content "app/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+          if ($configuredVersion -ne $version) {
+            throw "Tag version $version does not match tauri.conf.json version $configuredVersion."
+          }
+
+          # This file exists only on the Actions runner. Tauri merges it over the
+          # normal config, embedding the public verification key + release feed
+          # and enabling signed updater artifacts for this production build.
+          $updaterConfig = [ordered]@{
+            bundle = [ordered]@{
+              createUpdaterArtifacts = $true
+            }
+            plugins = [ordered]@{
+              updater = [ordered]@{
+                pubkey = $env:TAURI_UPDATER_PUBKEY
+                endpoints = @(
+                  "https://github.com/Smitty1202/ATLAS/releases/latest/download/latest.json"
+                )
+                windows = [ordered]@{
+                  installMode = "passive"
+                }
+              }
+            }
+          }
+          $updaterConfig |
+            ConvertTo-Json -Depth 8 |
+            Set-Content "app/src-tauri/updater.release.conf.json" -Encoding utf8
+
+      - name: Build signed Tauri app
+        working-directory: app
+        run: bun run tauri build --config src-tauri/updater.release.conf.json
+
+      - name: Locate outputs and build updater manifest
         id: package
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Version from the tag (strip leading v). Falls back to ref_name for dispatch.
           $version = "${{ github.ref_name }}" -replace '^v', ''
           Write-Host "Version: $version"
 
           $targetDir = "app/src-tauri/target/release"
 
           # NSIS installer: <target>/release/bundle/nsis/*-setup.exe
-          $setup = Get-ChildItem -Path "$targetDir/bundle/nsis" -Filter "*-setup.exe" -ErrorAction SilentlyContinue
+          $setup = Get-ChildItem -Path "$targetDir/bundle/nsis" -Filter "*-setup.exe" -File -ErrorAction SilentlyContinue
           if (-not $setup) {
             Write-Host "ERROR: no NSIS setup exe found under $targetDir/bundle/nsis"
             Get-ChildItem -Path "$targetDir/bundle" -Recurse -ErrorAction SilentlyContinue | Format-Table -AutoSize
             exit 1
           }
           $setupPath = $setup[0].FullName
+          $setupName = $setup[0].Name
           Write-Host "Installer: $setupPath"
+
+          # With createUpdaterArtifacts=true Tauri signs the same NSIS installer.
+          $signaturePath = "$setupPath.sig"
+          if (-not (Test-Path $signaturePath)) {
+            throw "Updater signature not found: $signaturePath"
+          }
+          $signature = (Get-Content $signaturePath -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($signature)) {
+            throw "Updater signature file is empty: $signaturePath"
+          }
 
           # Raw self-contained exe: <target>/release/*.exe
           $exe = Get-ChildItem -Path $targetDir -Filter "*.exe" -File -ErrorAction SilentlyContinue
@@ -74,9 +136,33 @@ jobs:
           Compress-Archive -Path $exePath -DestinationPath $zipName -Force
           Write-Host "Portable: $zipName"
 
-          "version=$version"        >> $env:GITHUB_OUTPUT
-          "setup=$setupPath"        >> $env:GITHUB_OUTPUT
-          "portable=$zipName"       >> $env:GITHUB_OUTPUT
+          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$setupName"
+          $platform = [ordered]@{
+            signature = $signature
+            url = $downloadUrl
+          }
+
+          # Current updater versions can include the Windows bundle type in the
+          # target key. Publish both aliases to keep the feed compatible across
+          # Tauri v2 updater revisions while ATLAS ships NSIS only.
+          $manifest = [ordered]@{
+            version = $version
+            notes = "Smitty's ATLAS $version"
+            pub_date = (Get-Date).ToUniversalTime().ToString("o")
+            platforms = [ordered]@{
+              "windows-x86_64" = $platform
+              "windows-x86_64-nsis" = $platform
+            }
+          }
+          $latestPath = Join-Path (Get-Location) "latest.json"
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content $latestPath -Encoding utf8
+          Write-Host "Updater manifest: $latestPath"
+
+          "version=$version"             >> $env:GITHUB_OUTPUT
+          "setup=$setupPath"             >> $env:GITHUB_OUTPUT
+          "signature=$signaturePath"     >> $env:GITHUB_OUTPUT
+          "portable=$zipName"            >> $env:GITHUB_OUTPUT
+          "manifest=$latestPath"         >> $env:GITHUB_OUTPUT
 
       - name: Draft release
         uses: softprops/action-gh-release@v2
@@ -85,18 +171,27 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ steps.package.outputs.setup }}
+            ${{ steps.package.outputs.signature }}
             ${{ steps.package.outputs.portable }}
+            ${{ steps.package.outputs.manifest }}
           body: |
             ## Smitty's ATLAS ${{ steps.package.outputs.version }}
 
-            **Windows SmartScreen:** this is an unsigned build. If SmartScreen
-            warns you, click **More info -> Run anyway**.
+            **Windows SmartScreen:** this is an unsigned Windows Authenticode
+            build. If SmartScreen warns you, click **More info -> Run anyway**.
+
+            **In-app updater:** the NSIS artifact has a separate Tauri updater
+            signature. Installed ATLAS copies verify that signature before
+            installing. The updater feed remains invisible while this release is
+            a draft and goes live only when the release is published.
 
             <!-- VirusTotal: paste scan link before publishing -->
 
             ### Install
-            Download the Smitty's ATLAS installer
-            and run it, or grab the portable `.zip` and run the exe directly.
+            Download the Smitty's ATLAS installer and run it, or grab the
+            portable `.zip` and run the exe directly. Once an updater-enabled
+            build is installed, future stable releases can be downloaded and
+            installed from **About -> Check for updates**.
 
             **Xbox/Game Pass saves:** convert with
             [palworld-save-pal](https://github.com/oMaN-Rod/palworld-save-pal)

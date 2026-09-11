@@ -12,9 +12,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(save::WatcherState::default())
         .manage(solver::SolveGate::default())
         .manage(sftp::manager())
+        .manage(updater::PendingUpdate::default())
         .invoke_handler(tauri::generate_handler![
             save::load_save,
             save::watch_save,
@@ -36,6 +38,7 @@ pub fn run() {
             paldex::roster_counts,
             paldex::dex_reachability,
             updater::check_update,
+            updater::install_update,
             updater::data_pack_info,
             mapstate::get_map_state,
             xbox::detect_xbox_stores,

@@ -1,56 +1,49 @@
-// About panel: app version, data-pack identity, a manual update check, and the
-// license note. Mounted from the sidebar footer via <AboutButton /> (which
-// renders the "ATLAS · v{version}" chip as its own trigger and owns the modal
-// state), so App.tsx only needs the one import + usage.
+// About panel: app version, data-pack identity, signed in-app updates, and the
+// license note. Mounted from the sidebar footer via <AboutButton />.
 //
-// The update check hits GitHub's releases/latest via the Rust `check_update`
-// command (see src-tauri/src/updater.rs); any failure degrades to a quiet
-// "couldn't check" line. In plain-browser dev (`bun run dev`) there is no
-// backend, so we short-circuit to the "disabled" shape rather than error.
+// Desktop update checks/installations are handled by Rust through Tauri's
+// official updater plugin (src-tauri/src/updater.rs). Browser builds keep the
+// updater hidden. A failed network/signature/install operation remains local to
+// this panel and never crashes the rest of ATLAS.
 
 import { useCallback, useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import { Channel } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "../lib/tauri";
 import { caps } from "../lib/caps";
 
-/** Mirror of `updater::UpdateCheck`. `status` drives every rendered branch. */
 interface UpdateCheck {
   status: "disabled" | "up_to_date" | "update_available" | "error";
   latest?: string;
-  url?: string;
   notes?: string;
 }
 
-/** Mirror of `updater::DataPackInfo`. */
+interface DownloadEvent {
+  event: "Started" | "Progress" | "Finished";
+  data?: {
+    contentLength?: number | null;
+    chunkLength?: number;
+  };
+}
+
 interface DataPackInfo {
   pack_version: string;
   game_build: string;
 }
 
-/** Repository home, opened from the About footer's GitHub link. */
 const REPO_URL = "https://github.com/Smitty1202/ATLAS";
-/** Releases page, offered to web users who want the live-tracking desktop app. */
 const RELEASES_URL = "https://github.com/Smitty1202/ATLAS/releases";
-/** Original upstream project retained for attribution only. */
 const UPSTREAM_URL = "https://github.com/Wire15/pal-lab";
 
-/** Open an external URL: the Tauri opener in the desktop app, a new tab in the
- *  browser builds (where the opener plugin isn't available). */
 function openExternal(url: string): void {
   if (caps.isTauri) openUrl(url).catch(() => {});
   else window.open(url, "_blank", "noopener");
 }
 
-/** Neutral standing copy shown before any check runs and for the backend
- *  "disabled" status (browser preview / fixture mode, where there is no
- *  updater). */
 const DISABLED_MESSAGE =
-  "Compares your version against the latest GitHub release.";
+  "Checks the signed ATLAS release feed for a newer desktop build.";
 
-/** App version: browser builds read the compile-time package.json version
- *  (__APP_VERSION__ define); the desktop app asks Tauri for its installed
- *  version at runtime. Empty string while the async desktop read is in flight. */
 function useAppVersion(): string {
   const [v, setV] = useState<string>(caps.isTauri ? "" : __APP_VERSION__);
   useEffect(() => {
@@ -66,8 +59,6 @@ function useAppVersion(): string {
   return v;
 }
 
-/** The clickable sidebar-footer chip + its About modal. Self-contained: owns
- *  its own open/close state so the mount site needs no extra wiring. */
 export default function AboutButton() {
   const [open, setOpen] = useState(false);
   const version = useAppVersion();
@@ -92,16 +83,21 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   const [pack, setPack] = useState<DataPackInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<UpdateCheck | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [downloaded, setDownloaded] = useState(0);
+  const [downloadTotal, setDownloadTotal] = useState<number | null>(null);
+  const [downloadFinished, setDownloadFinished] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !installing) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [installing, onClose]);
 
-  // Data-pack identity; degrades gracefully in the browser builds (row hidden).
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -117,26 +113,73 @@ function AboutModal({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
+  const resetInstallState = useCallback(() => {
+    setInstalling(false);
+    setDownloaded(0);
+    setDownloadTotal(null);
+    setDownloadFinished(false);
+    setInstallError(null);
+    setInstalled(false);
+  }, []);
+
   const check = useCallback(async () => {
+    resetInstallState();
     setChecking(true);
     setResult(null);
     try {
-      const current = version || (await getVersion().catch(() => "0.0.0"));
-      const r = await invoke<UpdateCheck>("check_update", {
-        currentVersion: current,
-      });
+      const r = await invoke<UpdateCheck>("check_update");
       setResult(r);
     } catch (e) {
       setResult({ status: "error", notes: String(e) });
     } finally {
       setChecking(false);
     }
-  }, [version]);
+  }, [resetInstallState]);
+
+  const install = useCallback(async () => {
+    if (!caps.isTauri || installing) return;
+
+    setInstalling(true);
+    setDownloaded(0);
+    setDownloadTotal(null);
+    setDownloadFinished(false);
+    setInstallError(null);
+    setInstalled(false);
+
+    let downloadedNow = 0;
+    const onEvent = new Channel<DownloadEvent>();
+    onEvent.onmessage = (message) => {
+      if (message.event === "Started") {
+        const total = message.data?.contentLength;
+        setDownloadTotal(typeof total === "number" ? total : null);
+        return;
+      }
+      if (message.event === "Progress") {
+        downloadedNow += message.data?.chunkLength ?? 0;
+        setDownloaded(downloadedNow);
+        return;
+      }
+      if (message.event === "Finished") {
+        setDownloadFinished(true);
+      }
+    };
+
+    try {
+      await invoke<void>("install_update", { onEvent });
+      // Windows normally exits ATLAS before this line while NSIS takes over.
+      // Keep a sane fallback for any platform where the command returns.
+      setInstalled(true);
+    } catch (e) {
+      setInstallError(String(e));
+    } finally {
+      setInstalling(false);
+    }
+  }, [installing]);
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-abyss/70 p-6"
-      onMouseDown={onClose}
+      onMouseDown={() => !installing && onClose()}
       role="presentation"
     >
       <div
@@ -192,13 +235,22 @@ function AboutModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <button
                   onClick={check}
-                  disabled={checking}
+                  disabled={checking || installing}
                   className="rounded-md border border-line bg-raised px-3 py-1.5 text-[12px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {checking ? "Checking\u2026" : "Check for updates"}
                 </button>
               </div>
-              <UpdateResult result={result} />
+              <UpdateResult
+                result={result}
+                onInstall={install}
+                installing={installing}
+                downloaded={downloaded}
+                downloadTotal={downloadTotal}
+                downloadFinished={downloadFinished}
+                installError={installError}
+                installed={installed}
+              />
             </>
           ) : (
             <>
@@ -229,7 +281,8 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={onClose}
-              className="shrink-0 rounded-md px-3 py-1.5 text-[13px] font-medium text-ink-faint transition-colors hover:text-ink-dim"
+              disabled={installing}
+              className="shrink-0 rounded-md px-3 py-1.5 text-[13px] font-medium text-ink-faint transition-colors hover:text-ink-dim disabled:cursor-not-allowed disabled:opacity-50"
             >
               Close
             </button>
@@ -258,10 +311,36 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Renders the current update-check state. Idle (no result yet) falls back to
- *  the neutral standing copy so the panel reads correctly before any click. */
-function UpdateResult({ result }: { result: UpdateCheck | null }) {
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function UpdateResult({
+  result,
+  onInstall,
+  installing,
+  downloaded,
+  downloadTotal,
+  downloadFinished,
+  installError,
+  installed,
+}: {
+  result: UpdateCheck | null;
+  onInstall: () => void;
+  installing: boolean;
+  downloaded: number;
+  downloadTotal: number | null;
+  downloadFinished: boolean;
+  installError: string | null;
+  installed: boolean;
+}) {
   const status = result?.status ?? "disabled";
+  const percent =
+    downloadTotal && downloadTotal > 0
+      ? Math.min(100, Math.round((downloaded / downloadTotal) * 100))
+      : null;
 
   if (status === "update_available") {
     return (
@@ -274,24 +353,68 @@ function UpdateResult({ result }: { result: UpdateCheck | null }) {
             {result.notes}
           </p>
         )}
-        {result?.url && (
+
+        {(installing || downloaded > 0 || downloadFinished) && (
+          <div className="mt-2.5">
+            <div className="mb-1 flex items-center justify-between gap-3 font-mono text-[10px] text-ink-dim">
+              <span>
+                {downloadFinished ? "Installing update\u2026" : "Downloading update\u2026"}
+              </span>
+              {!downloadFinished && (
+                <span>
+                  {percent !== null
+                    ? `${percent}%`
+                    : downloaded > 0
+                      ? formatBytes(downloaded)
+                      : ""}
+                </span>
+              )}
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-abyss/70">
+              <div
+                className="h-full bg-amber transition-[width] duration-150"
+                style={{ width: `${downloadFinished ? 100 : (percent ?? 8)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {installError && (
+          <div className="mt-2 rounded border border-bad/40 bg-bad/10 px-2 py-1.5 text-[11px] text-bad">
+            {installError}
+          </div>
+        )}
+
+        {installed ? (
+          <p className="mt-2 text-[11px] text-good">
+            Update installed. Restart ATLAS to finish.
+          </p>
+        ) : (
           <button
-            onClick={() => openUrl(result.url!).catch(() => {})}
-            className="mt-2 rounded-md bg-amber px-3 py-1 text-[12px] font-semibold text-abyss transition-colors hover:bg-amber-bright"
+            onClick={onInstall}
+            disabled={installing}
+            className="mt-2.5 rounded-md bg-amber px-3 py-1.5 text-[12px] font-semibold text-abyss transition-colors hover:bg-amber-bright disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Open release page
+            {installing
+              ? downloadFinished
+                ? "Installing\u2026"
+                : "Downloading\u2026"
+              : installError
+                ? "Retry download & install"
+                : "Download & install"}
           </button>
         )}
+
+        <p className="mt-2 text-[10px] leading-relaxed text-ink-faint">
+          The update is signature-verified before installation. On Windows,
+          ATLAS closes automatically while the installer applies it.
+        </p>
       </div>
     );
   }
 
   if (status === "up_to_date") {
-    return (
-      <p className="text-[12px] text-ink-dim">
-        You&rsquo;re up to date{result?.latest ? ` (v${result.latest})` : ""}.
-      </p>
-    );
+    return <p className="text-[12px] text-ink-dim">You&rsquo;re up to date.</p>;
   }
 
   if (status === "error") {
@@ -304,7 +427,7 @@ function UpdateResult({ result }: { result: UpdateCheck | null }) {
 
   return (
     <p className="text-[12px] leading-relaxed text-ink-faint">
-      {DISABLED_MESSAGE}.
+      {DISABLED_MESSAGE}
     </p>
   );
 }
