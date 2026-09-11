@@ -157,7 +157,7 @@ export function SpeciesRoleSummary({
         <RoleCard eyebrow="Role pick" title="Best worker copy" pick={summary.worker} onOpen={onOpenPal} />
         <div className="rounded-md border border-line bg-raised/45 p-3">
           <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber">Breeding core</div>
-          <div className="mt-0.5 font-display text-sm font-semibold text-ink">Best male + female candidates</div>
+          <div className="mt-0.5 font-display text-sm font-semibold text-ink">Recommended male + female breeding core</div>
           <div className="mt-2 grid gap-2">
             <BreedingCandidate label="Male" pick={summary.breeding.male} onOpen={onOpenPal} />
             <BreedingCandidate label="Female" pick={summary.breeding.female} onOpen={onOpenPal} />
