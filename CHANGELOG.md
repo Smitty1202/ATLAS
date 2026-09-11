@@ -3,7 +3,7 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-09-11
 
 ### Added
 - Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
@@ -411,3 +411,4 @@ desktop).
 
 - Initially released under GPL-3.0 at the repo root, forced solely by the
   vendored C++ `ooz` decompressor. Relicensed to MIT in 1.2.0 (see above).
+
