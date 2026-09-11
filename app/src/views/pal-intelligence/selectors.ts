@@ -2,6 +2,7 @@ import { isAlpha, type ContainerKind, type OwnedPal, type SaveSummary } from "..
 import { hexGuid } from "../../components/palbox/selectors";
 
 export type IntelSortKey = "count" | "name" | "level" | "iv";
+export type IntelInstanceSortKey = "iv" | "level" | "location" | "rank" | "alpha";
 export type IntelSpecialFilter = "all" | "alpha" | "lucky" | "boss";
 export type IntelLocationFilter = "all" | ContainerKind;
 
@@ -139,9 +140,7 @@ export function buildIntelGroups(
       defMax = Math.max(defMax, pal.ivs.defense);
     }
 
-    const sortedInstances = [...instances].sort(
-      (a, b) => ivAverage(b) - ivAverage(a) || b.level - a.level,
-    );
+    const sortedInstances = sortIntelInstances(instances, "iv");
 
     return {
       species_id: speciesId,
@@ -216,6 +215,29 @@ export function sortIntelGroups(
         return b.best_iv_average - a.best_iv_average || b.count - a.count || a.name.localeCompare(b.name);
       default:
         return b.count - a.count || a.name.localeCompare(b.name);
+    }
+  });
+  return rows;
+}
+
+/** Sort the exact instance records shown under a selected species. */
+export function sortIntelInstances(
+  pals: OwnedPal[],
+  sortKey: IntelInstanceSortKey,
+): OwnedPal[] {
+  const rows = [...pals];
+  rows.sort((a, b) => {
+    switch (sortKey) {
+      case "level":
+        return b.level - a.level || ivAverage(b) - ivAverage(a);
+      case "location":
+        return a.container_kind.localeCompare(b.container_kind) || ivAverage(b) - ivAverage(a);
+      case "rank":
+        return b.rank - a.rank || ivAverage(b) - ivAverage(a);
+      case "alpha":
+        return Number(isAlpha(b)) - Number(isAlpha(a)) || Number(b.is_boss) - Number(a.is_boss) || Number(b.is_lucky) - Number(a.is_lucky) || ivAverage(b) - ivAverage(a);
+      default:
+        return ivAverage(b) - ivAverage(a) || b.level - a.level;
     }
   });
   return rows;
