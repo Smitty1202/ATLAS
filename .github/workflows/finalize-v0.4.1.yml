@@ -33,7 +33,7 @@ jobs:
           function Replace-Required([string]$Path, [string]$Old, [string]$New) {
             $text = Get-Content $Path -Raw
             if (-not $text.Contains($Old)) {
-              throw "Expected text not found in $Path: $Old"
+              throw "Expected text not found in ${Path}: $Old"
             }
             Set-Content $Path ($text.Replace($Old, $New)) -Encoding utf8
           }
@@ -113,7 +113,7 @@ jobs:
           $updaterDoc = $updaterDoc.Substring(0, $bootstrapIndex) + $completed + "`r`n"
           Set-Content $updaterDocPath $updaterDoc -Encoding utf8
 
-          Replace-Required ".github/workflows/release.yml" "        run: bun install`n" "        run: bun install --frozen-lockfile`n"
+          Replace-Required ".github/workflows/release.yml" "run: bun install" "run: bun install --frozen-lockfile"
 
           git rm .github/workflows/updater-bootstrap.yml
           git rm .github/workflows/self-updater-verify.yml
