@@ -25,17 +25,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Finalize release metadata and cleanup bootstrap scaffolding
+      - name: Finalize v0.4.1 metadata
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           function Replace-Required([string]$Path, [string]$Old, [string]$New) {
-            $text = Get-Content $Path -Raw
+            $text = [System.IO.File]::ReadAllText($Path)
             if (-not $text.Contains($Old)) {
               throw "Expected text not found in ${Path}: $Old"
             }
-            Set-Content $Path ($text.Replace($Old, $New)) -Encoding utf8
+            [System.IO.File]::WriteAllText($Path, $text.Replace($Old, $New))
           }
 
           Replace-Required "app/package.json" '"version": "0.4.0"' '"version": "0.4.1"'
@@ -43,7 +43,7 @@ jobs:
           Replace-Required "app/src-tauri/Cargo.toml" 'version = "0.4.0"' 'version = "0.4.1"'
 
           $lockPath = "app/src-tauri/Cargo.lock"
-          $lock = Get-Content $lockPath -Raw
+          $lock = [System.IO.File]::ReadAllText($lockPath)
           $atlasBlock = "name = `"atlas`"`r`nversion = `"0.4.0`""
           if (-not $lock.Contains($atlasBlock)) {
             $atlasBlock = "name = `"atlas`"`nversion = `"0.4.0`""
@@ -51,73 +51,59 @@ jobs:
           if (-not $lock.Contains($atlasBlock)) {
             throw "ATLAS 0.4.0 root package entry not found in Cargo.lock"
           }
-          $lock = $lock.Replace($atlasBlock, ($atlasBlock -replace '0\.4\.0','0.4.1'))
-          Set-Content $lockPath $lock -Encoding utf8
+          [System.IO.File]::WriteAllText(
+            $lockPath,
+            $lock.Replace($atlasBlock, ($atlasBlock -replace '0\.4\.0','0.4.1'))
+          )
 
           $changelogPath = "CHANGELOG.md"
-          $changelog = Get-Content $changelogPath -Raw
+          $changelog = [System.IO.File]::ReadAllText($changelogPath)
           $marker = "## [0.4.0] - 2026-09-10"
           if (-not $changelog.Contains($marker)) {
             throw "0.4.0 changelog marker not found"
           }
           $entry = @"
-          ## [0.4.1] - 2026-09-10
+## [0.4.1] - 2026-09-10
 
-          ### Added
-          - Added signed in-app self-updating for installed Windows builds using
-            Tauri's official updater and NSIS packages.
-          - Added About-panel update download/install controls with release notes,
-            progress reporting, retry handling, and automatic handoff to the
-            passive Windows installer.
-          - Added mandatory updater-package signature verification using ATLAS's
-            permanent updater signing key.
+### Added
+- Added signed in-app self-updating for installed Windows builds using Tauri's official updater and NSIS packages.
+- Added About-panel update download/install controls with release notes, progress reporting, retry handling, and automatic handoff to the passive Windows installer.
+- Added mandatory updater-package signature verification using ATLAS's permanent updater signing key.
 
-          ### Changed
-          - Hardened the release workflow to generate signed updater artifacts,
-            `latest.json`, installer signatures, and draft releases that remain
-            invisible to installed clients until the existing security gate passes.
-          - Release builds now install frontend dependencies from the frozen Bun
-            lockfile for reproducible packaging.
+### Changed
+- Hardened the release workflow to generate signed updater artifacts, `latest.json`, installer signatures, and draft releases that remain invisible to installed clients until the existing security gate passes.
+- Release builds now install frontend dependencies from the frozen Bun lockfile for reproducible packaging.
 
-          ### Verified
-          - Proved the complete updater chain with an isolated
-            `0.4.1-bootstrap` -> `0.4.2-bootstrap` upgrade before shipping the
-            stable updater path.
+### Verified
+- Proved the complete updater chain with an isolated `0.4.1-bootstrap` -> `0.4.2-bootstrap` upgrade before shipping the stable updater path.
 
-          "@
-          $changelog = $changelog.Replace($marker, $entry + $marker)
-          Set-Content $changelogPath $changelog -Encoding utf8
+"@
+          [System.IO.File]::WriteAllText($changelogPath, $changelog.Replace($marker, $entry + $marker))
 
           $updaterDocPath = "docs/UPDATER.md"
-          $updaterDoc = Get-Content $updaterDocPath -Raw
+          $updaterDoc = [System.IO.File]::ReadAllText($updaterDocPath)
           $bootstrapHeading = "## Bootstrap test"
           $bootstrapIndex = $updaterDoc.IndexOf($bootstrapHeading)
           if ($bootstrapIndex -lt 0) {
             throw "Bootstrap test section not found in docs/UPDATER.md"
           }
           $completed = @"
-          ## Bootstrap proof completed
+## Bootstrap proof completed
 
-          The updater chain was proven on 2026-09-10 using isolated signed builds
-          `0.4.1-bootstrap` and `0.4.2-bootstrap`. The older build discovered the
-          fixed prerelease manifest, downloaded the newer NSIS installer, verified
-          its updater signature, handed off installation, and relaunched as the
-          newer build. The stable GitHub `releases/latest` endpoint remained on
-          v0.4.0 throughout the proof.
+The updater chain was proven on 2026-09-10 using isolated signed builds
+`0.4.1-bootstrap` and `0.4.2-bootstrap`. The older build discovered the fixed
+prerelease manifest, downloaded the newer NSIS installer, verified its updater
+signature, handed off installation, and relaunched as the newer build. The stable
+GitHub `releases/latest` endpoint remained on v0.4.0 throughout the proof.
 
-          v0.4.0 predates the install-capable updater, so moving from v0.4.0 to
-          v0.4.1 requires one final manual installer. Once v0.4.1 is installed,
-          future stable releases use **About -> Check for updates -> Download &
-          install**.
-          "@
-          $updaterDoc = $updaterDoc.Substring(0, $bootstrapIndex) + $completed + "`r`n"
-          Set-Content $updaterDocPath $updaterDoc -Encoding utf8
-
-          Replace-Required ".github/workflows/release.yml" "run: bun install" "run: bun install --frozen-lockfile"
-
-          git rm .github/workflows/updater-bootstrap.yml
-          git rm .github/workflows/self-updater-verify.yml
-          git rm .github/workflows/finalize-v0.4.1.yml
+v0.4.0 predates the install-capable updater, so moving from v0.4.0 to v0.4.1
+requires one final manual installer. Once v0.4.1 is installed, future stable
+releases use **About -> Check for updates -> Download & install**.
+"@
+          [System.IO.File]::WriteAllText(
+            $updaterDocPath,
+            $updaterDoc.Substring(0, $bootstrapIndex) + $completed + "`r`n"
+          )
 
       - name: Install frontend dependencies
         working-directory: app
@@ -130,12 +116,11 @@ jobs:
         working-directory: app
         run: bun run build
 
-      - name: Commit finalized v0.4.1 release prep
+      - name: Commit finalized v0.4.1 metadata
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          git diff --check
-          git add -A
+          git add app/package.json app/src-tauri/tauri.conf.json app/src-tauri/Cargo.toml app/src-tauri/Cargo.lock CHANGELOG.md docs/UPDATER.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Finalize v0.4.1 signed updater"
