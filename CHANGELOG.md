@@ -8,6 +8,7 @@ version is marked Unreleased.
 ### Added
 - Added explainable Pal Intelligence Keep / Breeding Candidate / Redundant recommendations using conservative same-species dominance rules, with visible evidence instead of an opaque score.
 - Added explicit passive rank/tier labels and per-Pal Condense X/4 labels so breeding value and condensation investment are readable at a glance.
+- Added rich passive hover cards in Pal Intelligence with player-facing effect wording, descriptions, rank/tier details, and viewport-aware positioning.
 - Added the first Pal Intelligence inventory workspace: species-first grouping over the authoritative owned-Pal save records, with search, location/special filters, duplicate counts, passive/location distributions, IV ranges, Alpha/Lucky/field-boss indicators, ownership context, and instance-level Pal-dex drill-down.
 - Added focused selector tests for player/guild-base scoping, human exclusion, aggregation, filtering, searching, and sorting.
 ## [0.4.1] - 2026-09-10

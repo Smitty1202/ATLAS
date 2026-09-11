@@ -42,7 +42,7 @@ type PassiveTooltipPosition = {
   offset: number;
 };
 
-const TOOLTIP_WIDTH = 360;
+const TOOLTIP_WIDTH = 408;
 const TOOLTIP_GAP = 8;
 const TOOLTIP_MARGIN = 12;
 const TOOLTIP_ESTIMATED_HEIGHT = 240;
@@ -79,7 +79,7 @@ function PassiveTooltip({
     <div
       id={tooltipId}
       role="tooltip"
-      className="pointer-events-none fixed z-[100] w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-line bg-abyss/98 shadow-2xl shadow-black/50"
+      className="pointer-events-none fixed z-[100] w-[408px] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-line bg-abyss/98 shadow-2xl shadow-black/50"
       style={style}
     >
       {row ? (
