@@ -1,0 +1,60 @@
+name: Self-updater verification
+
+on:
+  push:
+    branches:
+      - feature/self-updater
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    # The first run may refresh Cargo.lock and push it back to this feature
+    # branch. Do not recursively run again for that bot-authored lock commit.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/self-updater
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "app/src-tauri -> target"
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Compile and test Tauri backend
+        run: cargo test --manifest-path app/src-tauri/Cargo.toml
+
+      - name: Build frontend
+        working-directory: app
+        run: bun run build
+
+      - name: Commit refreshed Cargo lockfile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git add app/src-tauri/Cargo.lock
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Cargo.lock already current."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Refresh Cargo lock for updater"
+          git push origin HEAD:feature/self-updater
