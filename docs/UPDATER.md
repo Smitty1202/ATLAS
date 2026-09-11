@@ -69,21 +69,14 @@ Mark-of-the-Web, scan that downloaded copy with Defender, then publish only when
 clean. Publishing the draft is the action that makes the new `latest.json`
 visible to installed ATLAS copies.
 
-## Bootstrap test
+## Bootstrap proof completed
 
-The currently released v0.4.0 build contains the old read-only updater, so it
-cannot install this pipeline retroactively. The first updater-enabled release is
-a one-time manual install.
+The updater chain was proven on 2026-09-10 using isolated signed builds
+`0.4.1-bootstrap` and `0.4.2-bootstrap`. The older build discovered the fixed
+prerelease manifest, downloaded the newer NSIS installer, verified its updater
+signature, handed off installation, and relaunched as the newer build. The stable
+GitHub `releases/latest` endpoint remained on v0.4.0 throughout the proof.
 
-Before calling the slice complete, prove the chain with two updater-enabled test
-versions:
-
-1. install the older version normally,
-2. publish a newer signed test release,
-3. open **About -> Check for updates** in the older build,
-4. confirm the new version is offered,
-5. click **Download & install** and verify progress is shown,
-6. confirm ATLAS exits while NSIS applies the update, and
-7. launch ATLAS again and verify the installed version is the newer one.
-
-After that bootstrap, normal releases use the same in-app path.
+v0.4.0 predates the install-capable updater, so moving from v0.4.0 to v0.4.1
+requires one final manual installer. Once v0.4.1 is installed, future stable
+releases use **About -> Check for updates -> Download & install**.
