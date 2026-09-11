@@ -10,7 +10,11 @@ import {
 } from "../lib/types";
 import { containerLabel, genderView, ivBand, QUALITY_TEXT } from "../lib/ui";
 import { PalIcon, Tag } from "../components/primitives";
-import { PassiveStrip } from "../components/passive-strip";
+import {
+  CondenseBadge,
+  IntelPassiveStrip,
+  RecommendationSummary,
+} from "./pal-intelligence/instance-intel";
 import { hexGuid } from "../components/palbox/selectors";
 import {
   applyIntelInstanceFilters,
@@ -150,10 +154,14 @@ function SpeciesRow({
 
 function InstanceRow({
   pal,
+  peers,
+  passiveRows,
   ownerLabel,
   onOpenDex,
 }: {
   pal: OwnedPal;
+  peers: OwnedPal[];
+  passiveRows: ReadonlyMap<string, PassiveEntry>;
   ownerLabel: string;
   onOpenDex: () => void;
 }) {
@@ -173,7 +181,9 @@ function InstanceRow({
             {pal.is_boss && <Tag>Field boss</Tag>}
             {pal.rank > 0 && <span className="font-mono text-[11px] text-amber">{"★".repeat(pal.rank)}</span>}
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">
+          <RecommendationSummary pal={pal} peers={peers} passiveRows={passiveRows} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">
+            <CondenseBadge rank={pal.rank} />
             <span>IV avg <span className={QUALITY_TEXT[ivBand(avg)]}>{avg}</span></span>
             <span>HP <span className={QUALITY_TEXT[ivBand(pal.ivs.hp)]}>{pal.ivs.hp}</span></span>
             <span>ATK <span className={QUALITY_TEXT[ivBand(pal.ivs.attack)]}>{pal.ivs.attack}</span></span>
@@ -186,7 +196,11 @@ function InstanceRow({
           {pal.passives.length > 0 && (
             <div className="mt-2 grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
               {pal.passives.map((passive, index) => (
-                <PassiveStrip key={`${passive}-${index}`} id={passive} size="sm" />
+                <IntelPassiveStrip
+                  key={`${passive}-${index}`}
+                  id={passive}
+                  passiveRows={passiveRows}
+                />
               ))}
             </div>
           )}
@@ -207,6 +221,7 @@ export default function PalIntelligence() {
   const { saveSummary, saveLoading, saveError, playerScope, requestDex } = useAppState();
   const [speciesNames, setSpeciesNames] = useState<Map<string, string>>(new Map());
   const [passiveNames, setPassiveNames] = useState<Map<string, string>>(new Map());
+  const [passiveRows, setPassiveRows] = useState<Map<string, PassiveEntry>>(new Map());
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState<IntelLocationFilter>("all");
   const [special, setSpecial] = useState<IntelSpecialFilter>("all");
@@ -220,7 +235,10 @@ export default function PalIntelligence() {
       .then((rows) => setSpeciesNames(new Map(rows.map((row) => [row.id, row.name]))))
       .catch(() => {});
     invoke<PassiveEntry[]>("list_passives")
-      .then((rows) => setPassiveNames(new Map(rows.map((row) => [row.id, row.name]))))
+      .then((rows) => {
+        setPassiveNames(new Map(rows.map((row) => [row.id, row.name])));
+        setPassiveRows(new Map(rows.map((row) => [row.id, row])));
+      })
       .catch(() => {});
   }, []);
 
@@ -451,6 +469,8 @@ export default function PalIntelligence() {
                   <InstanceRow
                     key={hexGuid(pal.instance_id)}
                     pal={pal}
+                    peers={selected.instances}
+                    passiveRows={passiveRows}
                     ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
                     onOpenDex={() => requestDex(selected.species_id, hexGuid(pal.instance_id))}
                   />
