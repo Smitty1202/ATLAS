@@ -3,6 +3,11 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.5.0] - Unreleased
+
+### Added
+- Added the first Pal Intelligence inventory workspace: species-first grouping over the authoritative owned-Pal save records, with search, location/special filters, duplicate counts, passive/location distributions, IV ranges, Alpha/Lucky/field-boss indicators, ownership context, and instance-level Pal-dex drill-down.
+- Added focused selector tests for player/guild-base scoping, human exclusion, aggregation, filtering, searching, and sorting.
 ## [0.4.1] - 2026-09-10
 
 ### Added
