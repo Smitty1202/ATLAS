@@ -136,6 +136,20 @@ jobs:
           Compress-Archive -Path $exePath -DestinationPath $zipName -Force
           Write-Host "Portable: $zipName"
 
+          # Feed the actual release changelog into the in-app updater instead of
+          # a generic version string. Fall back safely if the section is missing.
+          $changelog = Get-Content "CHANGELOG.md" -Raw
+          $escapedVersion = [regex]::Escape($version)
+          $releaseMatch = [regex]::Match(
+            $changelog,
+            "(?ms)^## \[$escapedVersion\] - [^\r\n]+\r?\n(?<body>.*?)(?=^## \[|\z)"
+          )
+          if ($releaseMatch.Success) {
+            $releaseNotes = $releaseMatch.Groups["body"].Value.Trim()
+          } else {
+            $releaseNotes = "Smitty's ATLAS $version"
+          }
+
           $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$setupName"
           $platform = [ordered]@{
             signature = $signature
@@ -147,7 +161,7 @@ jobs:
           # Tauri v2 updater revisions while ATLAS ships NSIS only.
           $manifest = [ordered]@{
             version = $version
-            notes = "Smitty's ATLAS $version"
+            notes = $releaseNotes
             pub_date = (Get-Date).ToUniversalTime().ToString("o")
             platforms = [ordered]@{
               "windows-x86_64" = $platform
@@ -178,7 +192,11 @@ jobs:
             ## Smitty's ATLAS ${{ steps.package.outputs.version }}
 
             **Windows SmartScreen:** this is an unsigned Windows Authenticode
-            build. If SmartScreen warns you, click **More info -> Run anyway**.
+            build. If SmartScreen shows an **Unknown Publisher** warning, use
+            **More info -> Run anyway** only after confirming you downloaded the
+            release from this repository. If Microsoft Defender reports a
+            **malware detection**, do not bypass or allow it; verify the artifact
+            hash and report the detection instead.
 
             **In-app updater:** the NSIS artifact has a separate Tauri updater
             signature. Installed ATLAS copies verify that signature before
@@ -193,6 +211,5 @@ jobs:
             build is installed, future stable releases can be downloaded and
             installed from **About -> Check for updates**.
 
-            **Xbox/Game Pass saves:** convert with
-            [palworld-save-pal](https://github.com/oMaN-Rod/palworld-save-pal)
-            first.
+            **Xbox/Game Pass saves:** supported directly on Windows. Xbox console
+            saves must sync to the PC Game Pass app once before ATLAS can see them.
