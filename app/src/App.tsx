@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import SaveInspector from "./views/SaveInspector";
 import Progress from "./views/Progress";
+import PalIntelligence from "./views/PalIntelligence";
 import Solver from "./views/Solver";
 import Paldex from "./views/Paldex";
 import IvLab from "./views/IvLab";
@@ -70,6 +71,13 @@ function NavIcon({ view }: { view: View }) {
         <rect x="17" y="5" width="2.8" height="11" rx="0.7" />
       </svg>
     );
+  if (view === "intel")
+    return (
+      <svg {...common}>
+        <path d="M8 5.5a3 3 0 0 1 4-2.8 3 3 0 0 1 4 2.8 3 3 0 0 1 2.4 4.7A3.4 3.4 0 0 1 17 16.5a3.2 3.2 0 0 1-5 2.6 3.2 3.2 0 0 1-5-2.6 3.4 3.4 0 0 1-1.4-6.3A3 3 0 0 1 8 5.5Z" />
+        <path d="M12 3v16M8.5 8.5H12M12 13.5h4" />
+      </svg>
+    );
   if (view === "ivlab")
     return (
       <svg {...common}>
@@ -101,6 +109,7 @@ function NavIcon({ view }: { view: View }) {
 const NAV: { id: View; label: string; hint: string }[] = [
   { id: "save", label: "Save Inspector", hint: "Roster" },
   { id: "progress", label: "Progress", hint: "Dashboard" },
+  { id: "intel", label: "Pal Intelligence", hint: "Inventory" },
   { id: "solver", label: "Solver", hint: "Breeding plans" },
   { id: "ivlab", label: "IV Lab", hint: "Stat breeding" },
   { id: "paldex", label: "Pal-dex", hint: "Reference" },
@@ -1229,6 +1238,7 @@ function Shell() {
           <ErrorBoundary key={view} onReset={() => setView("save")}>
             {view === "save" && <SaveInspector />}
             {view === "progress" && <Progress />}
+            {view === "intel" && <PalIntelligence />}
             {view === "solver" && <Solver />}
             {view === "ivlab" && <IvLab />}
             {view === "paldex" && <Paldex />}

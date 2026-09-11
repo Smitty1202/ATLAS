@@ -44,7 +44,7 @@ import type {
 import type { SolveSpec } from "./lib/use-solve";
 import { hexGuid } from "./components/palbox/selectors";
 
-export type View = "save" | "progress" | "solver" | "paldex" | "ivlab" | "worldmap";
+export type View = "save" | "progress" | "intel" | "solver" | "paldex" | "ivlab" | "worldmap";
 
 export type MapFocusFilter =
   | "fastTravel"
