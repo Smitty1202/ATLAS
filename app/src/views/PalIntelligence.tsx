@@ -15,6 +15,7 @@ import {
   IntelPassiveStrip,
   RecommendationSummary,
 } from "./pal-intelligence/instance-intel";
+import { SpeciesRoleSummary } from "./pal-intelligence/species-role-summary";
 import { hexGuid } from "../components/palbox/selectors";
 import {
   applyIntelInstanceFilters,
@@ -451,6 +452,11 @@ export default function PalIntelligence() {
                 </div>
               </div>
 
+              <SpeciesRoleSummary
+                peers={selected.instances}
+                passiveRows={passiveRows}
+                onOpenPal={(pal) => requestDex(selected.species_id, hexGuid(pal.instance_id))}
+              />
               <div className="flex items-center justify-between gap-3 border-b border-line bg-raised/30 px-5 py-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Individual instances</span>
                 <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
