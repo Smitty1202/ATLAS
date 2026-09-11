@@ -12,13 +12,23 @@ cannot trust future releases signed by a replacement key.
 
 ## One-time key setup
 
-From PowerShell on a trusted development machine:
+From PowerShell on a trusted development machine, use ATLAS's pinned Tauri CLI:
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.tauri" | Out-Null
-bunx tauri signer generate -w "$env:USERPROFILE\.tauri\atlas-updater.key"
+cd E:\Dev\ATLAS\app
+bun run tauri signer generate -w "$env:USERPROFILE\.tauri\atlas-updater.key"
 Get-ChildItem "$env:USERPROFILE\.tauri\atlas-updater*"
 ```
+
+If the ATLAS checkout is not available, the package-qualified equivalent is:
+
+```powershell
+bunx @tauri-apps/cli signer generate -w "$env:USERPROFILE\.tauri\atlas-updater.key"
+```
+
+Do not use bare `bunx tauri` outside the project directory; Bun may resolve the
+unrelated `tauri` package instead of `@tauri-apps/cli`.
 
 Use Tauri CLI 2.10.1 or newer when generating the key. Tauri fixed an
 empty-password key-generation bug in 2.10.1; keys produced by affected older CLI
