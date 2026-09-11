@@ -15,7 +15,6 @@ version is marked Unreleased.
 ## [0.4.1] - 2026-09-10
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 - Added signed in-app self-updating for installed Windows builds using Tauri's official updater and NSIS packages.
 - Added About-panel update download/install controls with release notes, progress reporting, retry handling, and automatic handoff to the passive Windows installer.
 - Added mandatory updater-package signature verification using ATLAS's permanent updater signing key.
@@ -29,7 +28,6 @@ version is marked Unreleased.
 ## [0.4.0] - 2026-09-10
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 - Added a read-only Progress dashboard with active-scope Pal species, map
   completion counters, and world/player/base/owned-Pal summary stats.
 - Added lifetime Pal capture parsing from player `RecordData` so Progress
@@ -48,7 +46,6 @@ version is marked Unreleased.
 ## [0.3.0] - 2026-09-10
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 - Remembered map layer and viewport position/zoom.
 - Persistent effigy-type filters with All/None and hide-found controls.
 - 30-second map refresh plus refresh on focus/visibility.
@@ -87,7 +84,6 @@ historical accuracy and upstream attribution.
 ## [1.10.0] - 2026-08-04
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Remembered SFTP logins.** Opt-in "Remember password" on the connect form
   stores your password (or key passphrase) in the OS credential vault
@@ -109,7 +105,6 @@ historical accuracy and upstream attribution.
 ## [1.9.0] - 2026-08-03
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Captured humans are first-class.** Clicking a captured human (villager,
   merchant, syndicate thug, bounty target...) now opens a proper detail card -
@@ -142,7 +137,6 @@ historical accuracy and upstream attribution.
 ## [1.8.0] - 2026-08-03
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Dedicated servers over SFTP (desktop).** New _Dedicated server (SFTP)_
   button on the load screen: connect over SSH (password or key file), Pal Lab
@@ -168,7 +162,6 @@ historical accuracy and upstream attribution.
 ## [1.7.0] - 2026-07-28
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **The solver now explains itself.** Plan steps carry a per-egg odds
   breakdown (Passives / Move / IVs / Gender → expected eggs) in the step list
@@ -198,7 +191,6 @@ historical accuracy and upstream attribution.
 ## [1.6.0] - 2026-07-28
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Xbox / Game Pass saves, built in.** Pal Lab now reads the Windows Gaming
   Services (WGS) container store directly — no more converting with an
@@ -235,7 +227,6 @@ historical accuracy and upstream attribution.
 ## [1.5.0] - 2026-07-27
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Attack-skill inheritance solving** — the first tool anywhere to plan for
   active skills. Add **Required moves** to a solver target and Pal Lab plans
@@ -269,7 +260,6 @@ historical accuracy and upstream attribution.
 ## [1.4.1] - 2026-07-27
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Surgery table + gender reverser as solver cost options.** The solver can
   now relax the terminal breeding step by implanting missing required passives
@@ -313,7 +303,6 @@ historical accuracy and upstream attribution.
 ## [1.4.0] - 2026-07-27
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Pal-dex PARTNER tab** — all 299 partner skills with per-rank values, search,
   and species cross-links.
@@ -333,7 +322,6 @@ historical accuracy and upstream attribution.
 ## [1.3.0] - 2026-07-27
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Pal Lab on the web.** A new `pal-web` wasm crate mirrors every desktop
   command through a Web Worker, so the full solver runs in the browser.
@@ -352,7 +340,6 @@ historical accuracy and upstream attribution.
 ## [1.2.0] - 2026-07-27
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Saved-plan tracking.** Saved plans auto-check their steps as you breed
   in-game (via the save watcher): node status badges, a progress percentage,
@@ -377,7 +364,6 @@ historical accuracy and upstream attribution.
 ## [1.1.0] - 2026-07-26
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **No-path diagnostics.** When the solver finds no plan, it now explains _why_
   — no owned carrier for a required passive, target species unreachable, step
@@ -404,7 +390,6 @@ Initial release. A save-aware Palworld breeding planner for Windows (Tauri
 desktop).
 
 ### Added
-- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 
 - **Breeding solver** that reads your actual save and computes optimal breeding
   paths from the pals you own (working-set DP), with a probability model
