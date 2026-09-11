@@ -18,6 +18,8 @@ import {
   filterIntelGroups,
   scopedIntelPals,
   sortIntelGroups,
+  sortIntelInstances,
+  type IntelInstanceSortKey,
   type IntelLocationFilter,
   type IntelSortKey,
   type IntelSpecialFilter,
@@ -38,7 +40,7 @@ const LOCATION_OPTIONS: Array<[IntelLocationFilter, string]> = [
 const SPECIAL_OPTIONS: Array<[IntelSpecialFilter, string]> = [
   ["all", "All Pals"],
   ["alpha", "Alpha / rare"],
-  ["lucky", "Lucky / bred Alpha"],
+  ["lucky", "Lucky / rare"],
   ["boss", "Field-boss origin"],
 ];
 
@@ -48,6 +50,16 @@ const SORT_OPTIONS: Array<[IntelSortKey, string]> = [
   ["level", "Highest level"],
   ["iv", "Best IV average"],
 ];
+
+const INSTANCE_SORT_OPTIONS: Array<[IntelInstanceSortKey, string]> = [
+  ["iv", "Best IV"],
+  ["level", "Highest level"],
+  ["location", "Location"],
+  ["rank", "Highest rank"],
+  ["alpha", "Alpha first"],
+];
+
+const PASSIVE_PREVIEW_COUNT = 12;
 
 function ivAverage(pal: OwnedPal): number {
   return Math.round((pal.ivs.hp + pal.ivs.attack + pal.ivs.defense) / 3);
@@ -63,6 +75,22 @@ function Range({ label, range }: { label: string; range: [number, number] }) {
       </div>
     </div>
   );
+}
+
+function ownerLabelForPal(
+  pal: OwnedPal,
+  playerNames: ReadonlyMap<string, string>,
+  baseNames: ReadonlyMap<string, string>,
+): string {
+  if (pal.owner_player_uid) {
+    const uid = hexGuid(pal.owner_player_uid);
+    return playerNames.get(uid) ?? uid.slice(0, 8);
+  }
+  if (pal.container_kind === "Base" && pal.container_id) {
+    const id = hexGuid(pal.container_id);
+    return baseNames.get(id) ?? "Guild base";
+  }
+  return "Unassigned";
 }
 
 function SpeciesRow({
@@ -82,15 +110,17 @@ function SpeciesRow({
       type="button"
       onClick={onSelect}
       className={`w-full border-b border-line-soft px-4 py-3 text-left transition-colors ${
-        selected ? "bg-hover" : "hover:bg-panel/70"
+        selected ? "border-l-2 border-l-amber bg-hover" : "border-l-2 border-l-transparent hover:bg-panel/70"
       }`}
     >
       <div className="flex items-center gap-3">
         <PalIcon id={group.species_id} name={group.name} size={42} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate font-medium text-ink">{group.name}</span>
             {group.alpha_count > 0 && <Tag tone="boss">{group.alpha_count} Alpha</Tag>}
+            {group.boss_count > 0 && <Tag>{group.boss_count} Boss</Tag>}
+            {group.lucky_count > 0 && <Tag>{group.lucky_count} Lucky</Tag>}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-ink-faint">
             <span>{group.count} owned</span>
@@ -120,11 +150,11 @@ function SpeciesRow({
 
 function InstanceRow({
   pal,
-  playerName,
+  ownerLabel,
   onOpenDex,
 }: {
   pal: OwnedPal;
-  playerName: string;
+  ownerLabel: string;
   onOpenDex: () => void;
 }) {
   const gender = genderView(pal.gender);
@@ -134,7 +164,9 @@ function InstanceRow({
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-ink">{pal.nickname ? `“${pal.nickname}”` : `Level ${pal.level}`}</span>
+            <span className="font-medium text-ink">
+              {pal.nickname ? <>“{pal.nickname}” <span className="text-ink-faint">— Lv {pal.level}</span></> : `Level ${pal.level}`}
+            </span>
             <span className={gender.className} title={gender.label}>{gender.glyph}</span>
             {isAlpha(pal) && <Tag tone="boss">Alpha</Tag>}
             {pal.is_lucky && <Tag>Lucky</Tag>}
@@ -142,7 +174,6 @@ function InstanceRow({
             {pal.rank > 0 && <span className="font-mono text-[11px] text-amber">{"★".repeat(pal.rank)}</span>}
           </div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">
-            <span>Lv <span className="text-ink-dim">{pal.level}</span></span>
             <span>IV avg <span className={QUALITY_TEXT[ivBand(avg)]}>{avg}</span></span>
             <span>HP <span className={QUALITY_TEXT[ivBand(pal.ivs.hp)]}>{pal.ivs.hp}</span></span>
             <span>ATK <span className={QUALITY_TEXT[ivBand(pal.ivs.attack)]}>{pal.ivs.attack}</span></span>
@@ -150,7 +181,7 @@ function InstanceRow({
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Tag>{containerLabel(pal.container_kind)}</Tag>
-            <span className="text-[11px] text-ink-faint">{playerName}</span>
+            <span className="text-[11px] text-ink-faint">{ownerLabel}</span>
           </div>
           {pal.passives.length > 0 && (
             <div className="mt-2 grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
@@ -180,7 +211,9 @@ export default function PalIntelligence() {
   const [location, setLocation] = useState<IntelLocationFilter>("all");
   const [special, setSpecial] = useState<IntelSpecialFilter>("all");
   const [sortKey, setSortKey] = useState<IntelSortKey>("count");
+  const [instanceSortKey, setInstanceSortKey] = useState<IntelInstanceSortKey>("iv");
   const [selectedSpecies, setSelectedSpecies] = useState<string | null>(null);
+  const [showAllPassives, setShowAllPassives] = useState(false);
 
   useEffect(() => {
     invoke<NamedEntry[]>("list_species")
@@ -218,6 +251,10 @@ export default function PalIntelligence() {
     }
   }, [groups, selectedSpecies]);
 
+  useEffect(() => {
+    setShowAllPassives(false);
+  }, [selectedSpecies]);
+
   const selected = groups.find((group) => group.species_id === selectedSpecies) ?? null;
 
   const playerNames = useMemo(() => {
@@ -226,14 +263,30 @@ export default function PalIntelligence() {
     return map;
   }, [saveSummary]);
 
-  function ownerLabel(pal: OwnedPal): string {
-    if (pal.owner_player_uid) {
-      const uid = hexGuid(pal.owner_player_uid);
-      return playerNames.get(uid) ?? uid.slice(0, 8);
+  const baseNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const base of saveSummary?.bases ?? []) {
+      map.set(base.container_id, base.guild_name ? `${base.guild_name} base` : "Guild base");
     }
-    if (pal.container_kind === "Base") return "Guild base";
-    return "Unassigned";
-  }
+    return map;
+  }, [saveSummary]);
+
+  const selectedInstances = useMemo(
+    () => (selected ? sortIntelInstances(selected.instances, instanceSortKey) : []),
+    [selected, instanceSortKey],
+  );
+
+  const ownerDistribution = useMemo(() => {
+    if (!selected) return [];
+    const counts = new Map<string, number>();
+    for (const pal of selected.instances) {
+      const label = ownerLabelForPal(pal, playerNames, baseNames);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [selected, playerNames, baseNames]);
 
   if (saveLoading && !saveSummary) {
     return <div className="flex h-full items-center justify-center text-sm text-ink-faint">Reading Pal population…</div>;
@@ -307,17 +360,19 @@ export default function PalIntelligence() {
         <section className="min-h-0 overflow-y-auto">
           {selected ? (
             <>
-              <div className="sticky top-0 z-10 border-b border-line bg-panel/95 px-5 py-4 backdrop-blur">
+              <div className="sticky top-0 z-10 border-b border-l-2 border-l-amber border-line bg-panel/95 px-5 py-4 backdrop-blur">
                 <div className="flex items-center gap-4">
                   <PalIcon id={selected.species_id} name={selected.name} size={56} />
                   <div className="min-w-0 flex-1">
                     <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber">{selected.count} owned</div>
                     <h2 className="truncate font-display text-xl font-bold text-ink">{selected.name}</h2>
-                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-ink-faint">
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-faint">
                       <span>{selected.male_count} male</span>
                       <span>{selected.female_count} female</span>
                       {selected.unknown_gender_count > 0 && <span>{selected.unknown_gender_count} unknown</span>}
-                      {selected.alpha_count > 0 && <span className="text-amber">{selected.alpha_count} Alpha</span>}
+                      {selected.alpha_count > 0 && <span className="text-amber">{selected.alpha_count} Alpha total</span>}
+                      {selected.boss_count > 0 && <span>{selected.boss_count} field boss</span>}
+                      {selected.lucky_count > 0 && <span>{selected.lucky_count} Lucky / rare</span>}
                     </div>
                   </div>
                   <button type="button" onClick={() => requestDex(selected.species_id)} className="rounded-md border border-line bg-raised px-3 py-2 text-[12px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink">Open species in Pal-dex</button>
@@ -337,12 +392,25 @@ export default function PalIntelligence() {
               <div className="grid gap-0 border-b border-line lg:grid-cols-2">
                 <div className="border-b border-line px-5 py-4 lg:border-b-0 lg:border-r">
                   <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Passive distribution</div>
-                  <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
-                    {selected.passives.length > 0 ? selected.passives.map((passive) => (
-                      <span key={passive.id} className="rounded-md border border-line bg-raised px-2 py-1 text-[11px] text-ink-dim" title={passive.id}>
-                        {passiveNames.get(passive.id) ?? passive.id} <span className="font-mono text-amber">×{passive.count}</span>
-                      </span>
-                    )) : <span className="text-[12px] text-ink-faint">No passives recorded.</span>}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selected.passives.length > 0 ? (
+                      <>
+                        {(showAllPassives ? selected.passives : selected.passives.slice(0, PASSIVE_PREVIEW_COUNT)).map((passive) => (
+                          <span key={passive.id} className="rounded-md border border-line bg-raised px-2 py-1 text-[11px] text-ink-dim" title={passive.id}>
+                            {passiveNames.get(passive.id) ?? passive.id} <span className="font-mono text-amber">×{passive.count}</span>
+                          </span>
+                        ))}
+                        {selected.passives.length > PASSIVE_PREVIEW_COUNT && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllPassives((value) => !value)}
+                            className="rounded-md border border-amber/30 bg-amber/5 px-2 py-1 text-[11px] font-medium text-amber transition-colors hover:bg-amber/10"
+                          >
+                            {showAllPassives ? "Show less" : `+${selected.passives.length - PASSIVE_PREVIEW_COUNT} more`}
+                          </button>
+                        )}
+                      </>
+                    ) : <span className="text-[12px] text-ink-faint">No passives recorded.</span>}
                   </div>
                 </div>
                 <div className="px-5 py-4">
@@ -354,16 +422,36 @@ export default function PalIntelligence() {
                       </span>
                     ))}
                   </div>
+                  <div className="mt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Owner / base context</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {ownerDistribution.map((row) => (
+                      <span key={row.label} className="rounded-md border border-line bg-raised px-2 py-1 text-[11px] text-ink-dim">
+                        {row.label} <span className="font-mono text-amber">×{row.count}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="border-b border-line bg-raised/30 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Individual instances · strongest IV average first</div>
+              <div className="flex items-center justify-between gap-3 border-b border-line bg-raised/30 px-5 py-2">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Individual instances</span>
+                <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                  Sort
+                  <select
+                    value={instanceSortKey}
+                    onChange={(event) => setInstanceSortKey(event.currentTarget.value as IntelInstanceSortKey)}
+                    className="rounded-md border border-line bg-raised px-2 py-1.5 text-[11px] normal-case tracking-normal text-ink-dim outline-none focus:border-amber/50"
+                  >
+                    {INSTANCE_SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+              </div>
               <div>
-                {selected.instances.map((pal) => (
+                {selectedInstances.map((pal) => (
                   <InstanceRow
                     key={hexGuid(pal.instance_id)}
                     pal={pal}
-                    playerName={ownerLabel(pal)}
+                    ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
                     onOpenDex={() => requestDex(selected.species_id, hexGuid(pal.instance_id))}
                   />
                 ))}
