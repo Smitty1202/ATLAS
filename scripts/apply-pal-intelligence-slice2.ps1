@@ -73,17 +73,13 @@ $loadReplacement = @'
 '@
 $text = Replace-Exact $text $loadLine $loadReplacement "passive row loading"
 
-$callAnchor = @'
-                    pal={pal}
-                    ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
-'@
-$callReplacement = @'
+$palCallLine = '                    pal={pal}'
+$palCallReplacement = @'
                     pal={pal}
                     peers={selected.instances}
                     passiveRows={passiveRows}
-                    ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
 '@
-$text = Replace-Exact $text $callAnchor $callReplacement "InstanceRow call"
+$text = Replace-Exact $text $palCallLine $palCallReplacement "InstanceRow call"
 
 Set-Content $path -Value $text -NoNewline -Encoding utf8
 
