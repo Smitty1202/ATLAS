@@ -9,10 +9,19 @@ mod xbox;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Release builds receive the updater endpoint + public verification key
+    // through the generated release config. `tauri dev` intentionally has no
+    // updater config, so don't initialize the plugin in debug builds; otherwise
+    // Tauri tries to deserialize a missing plugins.updater section and panics
+    // before the app window can open.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .manage(save::WatcherState::default())
         .manage(solver::SolveGate::default())
         .manage(sftp::manager())
