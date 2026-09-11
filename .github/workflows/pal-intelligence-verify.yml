@@ -23,6 +23,13 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Normalize changelog line endings
+        shell: pwsh
+        run: |
+          $text = Get-Content CHANGELOG.md -Raw
+          $text = $text.Replace("`r`n", "`n")
+          Set-Content CHANGELOG.md -Value $text -NoNewline -Encoding utf8
+
       - name: Generate Pal Intelligence slice
         shell: pwsh
         run: ./scripts/build-pal-intelligence-slice1.ps1
