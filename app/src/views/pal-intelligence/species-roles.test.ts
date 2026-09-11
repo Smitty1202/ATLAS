@@ -52,6 +52,8 @@ const rows = new Map<string, PassiveEntry>([
   ["Serenity", passive("Serenity", 3, "ActiveSkillCoolTime_Decrease", "Serenity", -30)],
   ["Artisan", passive("Artisan", 3, "CraftSpeed", "Artisan", 50)],
   ["WorkSlave", passive("WorkSlave", 2, "CraftSpeed", "Work Slave", 30)],
+  ["Workaholic", passive("Workaholic", 3, "CraftSpeed", "Workaholic", 30)],
+  ["Immovable", passive("Immovable", 4, "Sanity_Decrease", "Heart of the Immovable King", -20)],
   ["Legend", passive("Legend", 4, "MoveSpeed", "Legend", 15)],
   ["Clumsy", passive("Clumsy", -1, "CraftSpeed", "Clumsy", -10)],
 ]);
@@ -93,6 +95,27 @@ describe("Pal Intelligence species role picks", () => {
     const summary = buildSpeciesRoleSummary([worker, fighter], rows);
     expect(summary.worker?.pal.instance_id).toEqual(A);
     expect(summary.worker?.reasons.join(" ")).toContain("Artisan");
+  });
+
+  test("worker productivity outranks higher-tier sustainability", () => {
+    const sustainability = pal({
+      instance_id: A,
+      passives: ["Immovable"],
+      rank: 4,
+      level: 55,
+      ivs: { hp: 95, attack: 95, defense: 95 },
+    });
+    const productive = pal({
+      instance_id: B,
+      gender: "Female",
+      passives: ["Workaholic"],
+      ivs: { hp: 30, attack: 30, defense: 30 },
+    });
+
+    const summary = buildSpeciesRoleSummary([sustainability, productive], rows);
+    expect(summary.worker?.pal.instance_id).toEqual(B);
+    expect(summary.worker?.reasons.join(" ")).toContain("Productivity passives: Workaholic (R3)");
+    expect(summary.worker?.reasons.join(" ")).not.toContain("Heart of the Immovable King");
   });
 
   test("breeding core selects male and female independently", () => {
