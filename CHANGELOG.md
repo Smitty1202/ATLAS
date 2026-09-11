@@ -6,6 +6,7 @@ version is marked Unreleased.
 ## [0.5.0] - Unreleased
 
 ### Added
+- Added species-level Pal Intelligence role picks for best combat copy, best worker copy, and separate male/female breeding-core candidates, with visible evidence and no hidden weighted score.
 - Added explainable Pal Intelligence Keep / Breeding Candidate / Redundant recommendations using conservative same-species dominance rules, with visible evidence instead of an opaque score.
 - Added explicit passive rank/tier labels and per-Pal Condense X/4 labels so breeding value and condensation investment are readable at a glance.
 - Added rich passive hover cards in Pal Intelligence with player-facing effect wording, descriptions, rank/tier details, and viewport-aware positioning.
