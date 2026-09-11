@@ -6,6 +6,7 @@ import {
   filterIntelGroups,
   scopedIntelPals,
   sortIntelGroups,
+  sortIntelInstances,
 } from "./selectors";
 
 const A = Array.from({ length: 16 }, (_, i) => i + 1);
@@ -143,5 +144,19 @@ describe("Pal Intelligence selectors", () => {
     expect(sortIntelGroups(groups, "count")[0]?.species_id).toBe("SheepBall");
     expect(sortIntelGroups(groups, "iv")[0]?.species_id).toBe("JetDragon");
     expect(sortIntelGroups(groups, "name").map((g) => g.name)).toEqual(["Jetragon", "Lamball"]);
+  });
+
+  test("sorts selected species instances by IV, level, location, rank, or Alpha status", () => {
+    const rows = [
+      pal({ instance_id: A, level: 12, rank: 0, container_kind: "Party", ivs: { hp: 95, attack: 95, defense: 95 } }),
+      pal({ instance_id: B, level: 50, rank: 1, container_kind: "Base", ivs: { hp: 50, attack: 50, defense: 50 } }),
+      pal({ instance_id: C, level: 30, rank: 4, container_kind: "Palbox", is_boss: true, ivs: { hp: 70, attack: 70, defense: 70 } }),
+    ];
+
+    expect(sortIntelInstances(rows, "iv")[0]?.instance_id).toEqual(A);
+    expect(sortIntelInstances(rows, "level")[0]?.instance_id).toEqual(B);
+    expect(sortIntelInstances(rows, "location").map((p) => p.container_kind)).toEqual(["Base", "Palbox", "Party"]);
+    expect(sortIntelInstances(rows, "rank")[0]?.instance_id).toEqual(C);
+    expect(sortIntelInstances(rows, "alpha")[0]?.instance_id).toEqual(C);
   });
 });
