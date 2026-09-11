@@ -21,17 +21,8 @@ import {
 } from "./pal-intelligence/instance-intel";
 '@ "instance intel import"
 
-$text = Replace-Exact $text @'
-function InstanceRow({
-  pal,
-  ownerLabel,
-  onOpenDex,
-}: {
-  pal: OwnedPal;
-  ownerLabel: string;
-  onOpenDex: () => void;
-}) {
-'@ @'
+$instancePattern = 'function InstanceRow\(\{\s*pal,\s*ownerLabel,\s*onOpenDex,\s*\}: \{\s*pal: OwnedPal;\s*ownerLabel: string;\s*onOpenDex: \(\) => void;\s*\}\) \{'
+$instanceReplacement = @'
 function InstanceRow({
   pal,
   peers,
@@ -45,7 +36,10 @@ function InstanceRow({
   ownerLabel: string;
   onOpenDex: () => void;
 }) {
-'@ "InstanceRow props"
+'@
+$updated = [regex]::Replace($text, $instancePattern, $instanceReplacement, 1)
+if ($updated -eq $text) { throw "Replacement anchor not found: InstanceRow props" }
+$text = $updated
 
 $text = Replace-Exact $text @'
             {pal.rank > 0 && <span className="font-mono text-[11px] text-amber">{"★".repeat(pal.rank)}</span>}
