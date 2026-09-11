@@ -3,6 +3,19 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.4.1] - 2026-09-10
+
+### Added
+- Added signed in-app self-updating for installed Windows builds using Tauri's official updater and NSIS packages.
+- Added About-panel update download/install controls with release notes, progress reporting, retry handling, and automatic handoff to the passive Windows installer.
+- Added mandatory updater-package signature verification using ATLAS's permanent updater signing key.
+
+### Changed
+- Hardened the release workflow to generate signed updater artifacts, `latest.json`, installer signatures, and draft releases that remain invisible to installed clients until the existing security gate passes.
+- Release builds now use the frozen Bun lockfile for reproducible packaging.
+
+### Verified
+- Proved the complete updater chain with an isolated `0.4.1-bootstrap` -> `0.4.2-bootstrap` upgrade before shipping the stable updater path.
 ## [0.4.0] - 2026-09-10
 
 ### Added
