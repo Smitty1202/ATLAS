@@ -34,6 +34,14 @@ jobs:
         shell: pwsh
         run: ./scripts/build-pal-intelligence-slice1.ps1
 
+      - name: Fix generated newline escapes
+        shell: pwsh
+        run: |
+          $path = "app/src/App.tsx"
+          $text = Get-Content $path -Raw
+          $text = $text.Replace('`n', "`n")
+          Set-Content $path -Value $text -NoNewline -Encoding utf8
+
       - name: Install frontend dependencies
         working-directory: app
         run: bun install --frozen-lockfile
