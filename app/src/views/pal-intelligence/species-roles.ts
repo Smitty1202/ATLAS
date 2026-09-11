@@ -30,14 +30,12 @@ const COMBAT_EFFECTS = new Set([
   "ResistAdditionalEffect_Poison",
 ]);
 
-const WORK_EFFECTS = new Set([
+const WORK_PRODUCTIVITY_EFFECTS = new Set([
   "CraftSpeed",
   "MoveSpeed",
   "MaxInventoryWeight",
   "CollectItem",
   "CollectItemDrop_NaturalObject",
-  "Sanity_Decrease",
-  "FullStomatch_Decrease",
   "Nocturnal",
   "NightOwl",
   "Logging",
@@ -46,6 +44,11 @@ const WORK_EFFECTS = new Set([
   "BreedSpeed",
   "BreedSpeed_InBaseCamp",
   "PalEggHatchingSpeed",
+]);
+
+const WORK_SUSTAINABILITY_EFFECTS = new Set([
+  "Sanity_Decrease",
+  "FullStomatch_Decrease",
 ]);
 
 function ivAverage(pal: OwnedPal): number {
@@ -91,8 +94,12 @@ function isCombatPassive(row: PassiveEntry): boolean {
   );
 }
 
-function isWorkPassive(row: PassiveEntry): boolean {
-  return row.rank > 0 && row.effects.some((effect) => WORK_EFFECTS.has(effect.type));
+function isWorkProductivityPassive(row: PassiveEntry): boolean {
+  return row.rank > 0 && row.effects.some((effect) => WORK_PRODUCTIVITY_EFFECTS.has(effect.type));
+}
+
+function isWorkSustainabilityPassive(row: PassiveEntry): boolean {
+  return row.rank > 0 && row.effects.some((effect) => WORK_SUSTAINABILITY_EFFECTS.has(effect.type));
 }
 
 function relevantRows(
@@ -161,15 +168,35 @@ function compareCombat(a: RoleEvidence, b: RoleEvidence): number {
   );
 }
 
+interface WorkerEvidence {
+  pal: OwnedPal;
+  productivity: RoleEvidence;
+  sustainability: RoleEvidence;
+}
+
+function workerEvidence(
+  pal: OwnedPal,
+  passiveRows: ReadonlyMap<string, PassiveEntry>,
+): WorkerEvidence {
+  return {
+    pal,
+    productivity: roleEvidence(pal, passiveRows, isWorkProductivityPassive),
+    sustainability: roleEvidence(pal, passiveRows, isWorkSustainabilityPassive),
+  };
+}
+
 function compareWorker(
-  a: RoleEvidence,
-  b: RoleEvidence,
+  a: WorkerEvidence,
+  b: WorkerEvidence,
   passiveRows: ReadonlyMap<string, PassiveEntry>,
 ): number {
   return (
-    b.highTier - a.highTier ||
-    b.rows.length - a.rows.length ||
-    compareRankVectors(a.ranks, b.ranks) ||
+    b.productivity.highTier - a.productivity.highTier ||
+    b.productivity.rows.length - a.productivity.rows.length ||
+    compareRankVectors(a.productivity.ranks, b.productivity.ranks) ||
+    b.sustainability.highTier - a.sustainability.highTier ||
+    b.sustainability.rows.length - a.sustainability.rows.length ||
+    compareRankVectors(a.sustainability.ranks, b.sustainability.ranks) ||
     b.pal.rank - a.pal.rank ||
     negativeCount(a.pal, passiveRows) - negativeCount(b.pal, passiveRows) ||
     b.pal.level - a.pal.level ||
@@ -205,14 +232,18 @@ function workerPick(
   passiveRows: ReadonlyMap<string, PassiveEntry>,
 ): SpeciesRolePick | null {
   if (peers.length === 0) return null;
-  const evidence = peers.map((pal) => roleEvidence(pal, passiveRows, isWorkPassive));
+  const evidence = peers.map((pal) => workerEvidence(pal, passiveRows));
   evidence.sort((a, b) => compareWorker(a, b, passiveRows));
   const best = evidence[0]!;
   const reasons: string[] = [];
-  if (best.rows.length > 0) {
-    reasons.push(`Work / base passives: ${best.rows.map(passiveLabel).join(", ")}.`);
+
+  if (best.productivity.rows.length > 0) {
+    reasons.push(`Productivity passives: ${best.productivity.rows.map(passiveLabel).join(", ")}.`);
   } else {
-    reasons.push("No owned copy has a positive work-specific passive; investment and penalties break the tie.");
+    reasons.push("No owned copy has a positive productivity passive; worker support and investment break the tie.");
+  }
+  if (best.sustainability.rows.length > 0) {
+    reasons.push(`Worker sustainability: ${best.sustainability.rows.map(passiveLabel).join(", ")}.`);
   }
   if (best.pal.rank > 0) reasons.push(`Condensed ${best.pal.rank}/4; preserves existing investment.`);
   const penalties = negativeCount(best.pal, passiveRows);
