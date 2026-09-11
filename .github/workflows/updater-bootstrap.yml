@@ -1,0 +1,173 @@
+name: Updater bootstrap package
+
+on:
+  push:
+    branches:
+      - feature/self-updater
+    paths:
+      - .github/workflows/updater-bootstrap.yml
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+      BOOTSTRAP_OLD_VERSION: 0.4.1-bootstrap
+      BOOTSTRAP_NEW_VERSION: 0.4.2-bootstrap
+      BOOTSTRAP_RELEASE_TAG: updater-bootstrap-v0.4.2
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/self-updater
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Validate signing secrets and generate bootstrap configs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "Missing TAURI_SIGNING_PRIVATE_KEY"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            throw "Missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_UPDATER_PUBKEY)) {
+            throw "Missing TAURI_UPDATER_PUBKEY"
+          }
+
+          $endpoint = "https://github.com/${{ github.repository }}/releases/download/$env:BOOTSTRAP_RELEASE_TAG/latest.json"
+
+          function Write-BootstrapConfig([string]$Version, [string]$Path) {
+            $config = [ordered]@{
+              version = $Version
+              bundle = [ordered]@{
+                createUpdaterArtifacts = $true
+              }
+              plugins = [ordered]@{
+                updater = [ordered]@{
+                  pubkey = $env:TAURI_UPDATER_PUBKEY
+                  endpoints = @($endpoint)
+                  windows = [ordered]@{
+                    installMode = "passive"
+                  }
+                }
+              }
+            }
+            $config | ConvertTo-Json -Depth 8 | Set-Content $Path -Encoding utf8
+          }
+
+          Write-BootstrapConfig $env:BOOTSTRAP_OLD_VERSION "app/src-tauri/bootstrap-old.conf.json"
+          Write-BootstrapConfig $env:BOOTSTRAP_NEW_VERSION "app/src-tauri/bootstrap-new.conf.json"
+
+      - name: Build older signed bootstrap installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:CARGO_TARGET_DIR = "$env:GITHUB_WORKSPACE\bootstrap-target-old"
+          Push-Location app
+          bun run tauri build --config src-tauri/bootstrap-old.conf.json
+          Pop-Location
+
+      - name: Build newer signed bootstrap installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:CARGO_TARGET_DIR = "$env:GITHUB_WORKSPACE\bootstrap-target-new"
+          Push-Location app
+          bun run tauri build --config src-tauri/bootstrap-new.conf.json
+          Pop-Location
+
+      - name: Package bootstrap proof set
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $output = Join-Path $env:GITHUB_WORKSPACE "bootstrap-output"
+          New-Item -ItemType Directory -Force $output | Out-Null
+
+          $oldSetup = Get-ChildItem "$env:GITHUB_WORKSPACE\bootstrap-target-old\release\bundle\nsis" -Filter "*-setup.exe" -File | Select-Object -First 1
+          $newSetup = Get-ChildItem "$env:GITHUB_WORKSPACE\bootstrap-target-new\release\bundle\nsis" -Filter "*-setup.exe" -File | Select-Object -First 1
+          if (-not $oldSetup) { throw "Older bootstrap installer not found" }
+          if (-not $newSetup) { throw "Newer bootstrap installer not found" }
+          if (-not (Test-Path "$($oldSetup.FullName).sig")) { throw "Older updater signature not found" }
+          if (-not (Test-Path "$($newSetup.FullName).sig")) { throw "Newer updater signature not found" }
+
+          $oldName = "ATLAS_$env:BOOTSTRAP_OLD_VERSION`_x64-setup.exe"
+          $newName = "ATLAS_$env:BOOTSTRAP_NEW_VERSION`_x64-setup.exe"
+          $oldOut = Join-Path $output $oldName
+          $newOut = Join-Path $output $newName
+          Copy-Item $oldSetup.FullName $oldOut
+          Copy-Item "$($oldSetup.FullName).sig" "$oldOut.sig"
+          Copy-Item $newSetup.FullName $newOut
+          Copy-Item "$($newSetup.FullName).sig" "$newOut.sig"
+
+          $signature = (Get-Content "$newOut.sig" -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($signature)) { throw "New updater signature is empty" }
+
+          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/$env:BOOTSTRAP_RELEASE_TAG/$newName"
+          $platform = [ordered]@{
+            signature = $signature
+            url = $downloadUrl
+          }
+          $manifest = [ordered]@{
+            version = $env:BOOTSTRAP_NEW_VERSION
+            notes = "ATLAS isolated self-updater bootstrap proof"
+            pub_date = (Get-Date).ToUniversalTime().ToString("o")
+            platforms = [ordered]@{
+              "windows-x86_64" = $platform
+              "windows-x86_64-nsis" = $platform
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $output "latest.json") -Encoding utf8
+
+          $readme = @"
+          ATLAS self-updater bootstrap proof
+
+          1. Security-scan BOTH installers before running either one.
+          2. Manually install $oldName.
+          3. Publish ONLY the newer installer, its .sig, and latest.json under tag:
+             $env:BOOTSTRAP_RELEASE_TAG
+             as a GitHub prerelease.
+          4. In the older build, open About -> Check for updates.
+          5. Confirm $env:BOOTSTRAP_NEW_VERSION is offered, then Download & install.
+          6. Confirm ATLAS exits, NSIS updates it, and the newer version launches.
+
+          This test channel uses a fixed prerelease asset URL and does not touch
+          GitHub releases/latest, so stable v0.4.0 remains the public latest release.
+          "@
+          $readme | Set-Content (Join-Path $output "README.txt") -Encoding utf8
+
+          Get-ChildItem $output -File |
+            Where-Object Name -ne "SHA256SUMS.txt" |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } | Set-Content (Join-Path $output "SHA256SUMS.txt") -Encoding ascii
+
+          Get-ChildItem $output | Format-Table Name, Length -AutoSize
+          Get-Content (Join-Path $output "SHA256SUMS.txt")
+
+      - name: Upload bootstrap proof set
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATLAS-updater-bootstrap
+          path: bootstrap-output/*
+          if-no-files-found: error
+          retention-days: 7
