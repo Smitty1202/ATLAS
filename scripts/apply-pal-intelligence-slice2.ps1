@@ -11,9 +11,7 @@ $path = "app/src/views/PalIntelligence.tsx"
 $text = Get-Content $path -Raw
 $text = $text.Replace("`r`n", "`n")
 
-$text = Replace-Exact $text @'
-import { PassiveStrip } from "../components/passive-strip";
-'@ @'
+$text = Replace-Exact $text 'import { PassiveStrip } from "../components/passive-strip";' @'
 import {
   CondenseBadge,
   IntelPassiveStrip,
@@ -41,65 +39,51 @@ $updated = [regex]::Replace($text, $instancePattern, $instanceReplacement, 1)
 if ($updated -eq $text) { throw "Replacement anchor not found: InstanceRow props" }
 $text = $updated
 
-$text = Replace-Exact $text @'
-            {pal.rank > 0 && <span className="font-mono text-[11px] text-amber">{"★".repeat(pal.rank)}</span>}
-          </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">
-'@ @'
-            {pal.rank > 0 && <span className="font-mono text-[11px] text-amber">{"★".repeat(pal.rank)}</span>}
-            <CondenseBadge rank={pal.rank} />
-          </div>
+$ivRow = '          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">'
+$ivRowReplacement = @'
           <RecommendationSummary pal={pal} peers={peers} passiveRows={passiveRows} />
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">
-'@ "condense and recommendation display"
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-ink-faint">
+            <CondenseBadge rank={pal.rank} />
+'@
+$text = Replace-Exact $text $ivRow $ivRowReplacement "recommendation and condense row"
 
-$text = Replace-Exact $text @'
-              {pal.passives.map((passive, index) => (
-                <PassiveStrip key={`${passive}-${index}`} id={passive} size="sm" />
-              ))}
-'@ @'
-              {pal.passives.map((passive, index) => (
+$passiveLine = '                <PassiveStrip key={`${passive}-${index}`} id={passive} size="sm" />'
+$passiveReplacement = @'
                 <IntelPassiveStrip
                   key={`${passive}-${index}`}
                   id={passive}
                   passiveRows={passiveRows}
                 />
-              ))}
-'@ "ranked passive strips"
+'@
+$text = Replace-Exact $text $passiveLine $passiveReplacement "ranked passive strip"
 
-$text = Replace-Exact $text @'
-  const [passiveNames, setPassiveNames] = useState<Map<string, string>>(new Map());
-'@ @'
+$stateLine = '  const [passiveNames, setPassiveNames] = useState<Map<string, string>>(new Map());'
+$stateReplacement = @'
   const [passiveNames, setPassiveNames] = useState<Map<string, string>>(new Map());
   const [passiveRows, setPassiveRows] = useState<Map<string, PassiveEntry>>(new Map());
-'@ "passive row state"
+'@
+$text = Replace-Exact $text $stateLine $stateReplacement "passive row state"
 
-$text = Replace-Exact $text @'
-    invoke<PassiveEntry[]>("list_passives")
-      .then((rows) => setPassiveNames(new Map(rows.map((row) => [row.id, row.name]))))
-      .catch(() => {});
-'@ @'
-    invoke<PassiveEntry[]>("list_passives")
+$loadLine = '      .then((rows) => setPassiveNames(new Map(rows.map((row) => [row.id, row.name]))))'
+$loadReplacement = @'
       .then((rows) => {
         setPassiveNames(new Map(rows.map((row) => [row.id, row.name])));
         setPassiveRows(new Map(rows.map((row) => [row.id, row])));
       })
-      .catch(() => {});
-'@ "passive row loading"
+'@
+$text = Replace-Exact $text $loadLine $loadReplacement "passive row loading"
 
-$text = Replace-Exact $text @'
-                  <InstanceRow
-                    key={hexGuid(pal.instance_id)}
+$callAnchor = @'
                     pal={pal}
                     ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
-'@ @'
-                  <InstanceRow
-                    key={hexGuid(pal.instance_id)}
+'@
+$callReplacement = @'
                     pal={pal}
                     peers={selected.instances}
                     passiveRows={passiveRows}
                     ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
-'@ "InstanceRow call"
+'@
+$text = Replace-Exact $text $callAnchor $callReplacement "InstanceRow call"
 
 Set-Content $path -Value $text -NoNewline -Encoding utf8
 
