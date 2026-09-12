@@ -34,6 +34,16 @@ jobs:
           $text = $text.Replace($old1, $new1).Replace($old2, $new2)
           Set-Content -Path $path -Value $text -NoNewline
 
+      - name: Remove obsolete helper
+        shell: pwsh
+        run: |
+          $path = "app/src/views/pal-intelligence/condensation.ts"
+          $text = Get-Content $path -Raw
+          $pattern = '(?s)\r?\nfunction samePal\(a: OwnedPal \| null \| undefined, b: OwnedPal\): boolean \{\r?\n  return Boolean\(a && stableId\(a\) === stableId\(b\)\);\r?\n\}\r?\n'
+          $updated = [regex]::Replace($text, $pattern, [Environment]::NewLine, 1)
+          if ($updated -eq $text) { throw "Unused samePal helper not found" }
+          Set-Content -Path $path -Value $updated -NoNewline
+
       - name: Install frontend dependencies
         working-directory: app
         run: bun install --frozen-lockfile
@@ -53,6 +63,6 @@ jobs:
           git rm .github/workflows/v06-condensation-refine-verify.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
+          git add CHANGELOG.md app/src/views/pal-intelligence/condensation.ts
           git commit -m "Finalize roster-level condensation guidance"
           git push origin HEAD:feature/condensation-intelligence
