@@ -25,10 +25,13 @@ jobs:
         run: |
           $path = "CHANGELOG.md"
           $text = Get-Content $path -Raw
-          $old = "- Added conservative Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Protected, and Needs Review groups backed by visible same-species evidence.`n- Condensation safety now protects role picks, breeding-core copies, unique positive passives and equipped moves, sole best-IV coverage, Alpha/Lucky/boss variants, gender diversity, and existing condensation investment."
-          $new = "- Added roster-level Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Likely Fodder, Protected Core, and Needs Review groups backed by visible same-species evidence.`n- Condensation Intelligence now builds a small keeper core first: role picks, breeding core, special/invested copies, Rank 3+ / Rainbow / World Tree passive coverage, and species-best IV coverage are preserved without protecting every duplicate carrier.`n- Safe material may preserve evidence across multiple keeper-core Pals instead of requiring one single all-dominating comparator; lower-tier passive or equipped-move tradeoffs are surfaced as Likely Fodder, while unknown metadata stays in Needs Review."
-          if (-not $text.Contains($old)) { throw "Expected condensation changelog block not found" }
-          $text = $text.Replace($old, $new)
+          $old1 = "- Added conservative Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Protected, and Needs Review groups backed by visible same-species evidence."
+          $new1 = "- Added roster-level Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Likely Fodder, Protected Core, and Needs Review groups backed by visible same-species evidence."
+          $old2 = "- Condensation safety now protects role picks, breeding-core copies, unique positive passives and equipped moves, sole best-IV coverage, Alpha/Lucky/boss variants, gender diversity, and existing condensation investment."
+          $new2 = "- Condensation Intelligence now builds a small keeper core first: role picks, breeding core, special/invested copies, Rank 3+ / Rainbow / World Tree passive coverage, and species-best IV coverage are preserved without protecting every duplicate carrier." + [Environment]::NewLine + "- Safe material may preserve evidence across multiple keeper-core Pals instead of requiring one single all-dominating comparator; lower-tier passive or equipped-move tradeoffs are surfaced as Likely Fodder, while unknown metadata stays in Needs Review."
+          if (-not $text.Contains($old1)) { throw "First condensation changelog line not found" }
+          if (-not $text.Contains($old2)) { throw "Second condensation changelog line not found" }
+          $text = $text.Replace($old1, $new1).Replace($old2, $new2)
           Set-Content -Path $path -Value $text -NoNewline
 
       - name: Install frontend dependencies
