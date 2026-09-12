@@ -41,9 +41,6 @@ function stableId(pal: OwnedPal): string {
   return pal.instance_id.map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-function samePal(a: OwnedPal | null | undefined, b: OwnedPal): boolean {
-  return Boolean(a && stableId(a) === stableId(b));
-}
 
 function ivAverage(pal: OwnedPal): number {
   return Math.round((pal.ivs.hp + pal.ivs.attack + pal.ivs.defense) / 3);

@@ -6,8 +6,9 @@ version is marked Unreleased.
 ## [0.6.0] - Unreleased
 
 ### Added
-- Added conservative Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Protected, and Needs Review groups backed by visible same-species evidence.
-- Condensation safety now protects role picks, breeding-core copies, unique positive passives and equipped moves, sole best-IV coverage, Alpha/Lucky/boss variants, gender diversity, and existing condensation investment.
+- Added roster-level Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Likely Fodder, Protected Core, and Needs Review groups backed by visible same-species evidence.
+- Condensation Intelligence now builds a small keeper core first: role picks, breeding core, special/invested copies, Rank 3+ / Rainbow / World Tree passive coverage, and species-best IV coverage are preserved without protecting every duplicate carrier.
+- Safe material may preserve evidence across multiple keeper-core Pals instead of requiring one single all-dominating comparator; lower-tier passive or equipped-move tradeoffs are surfaced as Likely Fodder, while unknown metadata stays in Needs Review.
 - Added typed Pal Intelligence handoffs into Solver and IV Lab so selected species and owned-instance context carry across tools without duplicating breeding or IV-planning logic.
 - Best combat/worker role cards can prefill Solver with only the role-relevant passives already justified by visible Pal Intelligence evidence.
 - IV Lab handoffs carry species-best owned IVs as an explicit suggestion; IV floors stay unchanged until the user chooses `Use floors`.
