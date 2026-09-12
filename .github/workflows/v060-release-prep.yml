@@ -1,0 +1,76 @@
+name: v0.6.0 release prep verification
+
+on:
+  push:
+    branches:
+      - release/v0.6.0
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/v0.6.0
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Prepare v0.6.0 metadata
+        run: python .github/scripts/prepare-v060.py
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Frontend test suite
+        working-directory: app
+        run: bun test
+
+      - name: Core Rust workspace tests
+        run: cargo test --workspace
+
+      - name: Desktop Rust check
+        run: cargo check --manifest-path app/src-tauri/Cargo.toml
+
+      - name: Desktop Rust test compile
+        run: cargo test --no-run --manifest-path app/src-tauri/Cargo.toml
+
+      - name: Frontend production build
+        working-directory: app
+        run: bun run build
+
+      - name: Validate release metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packageVersion = (Get-Content app/package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content app/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($packageVersion -ne "0.6.0") { throw "package.json version is $packageVersion" }
+          if ($tauriVersion -ne "0.6.0") { throw "tauri.conf.json version is $tauriVersion" }
+          if (-not (Select-String -Path app/src-tauri/Cargo.toml -Pattern '^version = "0\.6\.0"$' -Quiet)) { throw "Cargo.toml is not 0.6.0" }
+          $lock = Get-Content app/src-tauri/Cargo.lock -Raw
+          if ($lock -notmatch '(?ms)\[\[package\]\]\s+name = "atlas"\s+version = "0\.6\.0"') { throw "Cargo.lock atlas package is not 0.6.0" }
+          $changelog = Get-Content CHANGELOG.md -Raw
+          if ($changelog -notmatch '(?m)^## \[0\.6\.0\] - 2026-09-12$') { throw "0.6.0 changelog date missing" }
+          if ($changelog -match '(?m)^## \[0\.5\.1\]') { throw "phantom 0.5.1 section still exists" }
+          git diff --check
+
+      - name: Commit verified release prep
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git rm .github/workflows/v060-release-prep.yml .github/scripts/prepare-v060.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md app/package.json app/src-tauri/tauri.conf.json app/src-tauri/Cargo.toml app/src-tauri/Cargo.lock
+          git status --short
+          git commit -m "Prepare ATLAS v0.6.0 release"
+          git push origin HEAD:release/v0.6.0
