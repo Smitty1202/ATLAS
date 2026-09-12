@@ -34,8 +34,19 @@ jobs:
         working-directory: app
         run: bun test
 
-      - name: Core Rust workspace tests
-        run: cargo test --workspace
+      # The repository intentionally does not carry private probe save fixtures.
+      # Compile every workspace test, then run the packages whose tests are fully
+      # self-contained plus pal-save while skipping only fixture-backed probes.
+      - name: Core Rust workspace test compile
+        run: cargo test --workspace --no-run
+
+      - name: Core Rust self-contained tests
+        shell: pwsh
+        run: |
+          cargo test -p pal-data
+          cargo test -p pal-solver
+          cargo test -p pal-web
+          cargo test -p pal-save --lib -- --skip coop --skip dedicated_client_localdata_reveal
 
       - name: Desktop Rust check
         run: cargo check --manifest-path app/src-tauri/Cargo.toml
