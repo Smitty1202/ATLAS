@@ -8,6 +8,7 @@ version is marked Unreleased.
 ### Fixed
 - World Map now combines SFTP dedicated-server Level/Players data with the matching local client `LocalData.sav`, restoring player positions, bases, fog of war, and player-placed custom markers for remote worlds.
 - Added a per-save LocalData override in the Map filter so users can manually select/clear the client map-data file when automatic world-folder matching is ambiguous or unavailable.
+- Hardened custom map-marker decoding with a targeted LocalData marker scan for current Palworld saves where fog parses but the generic GVAS struct-array decoder yields zero pins.
 
 ## [0.5.0] - 2026-09-11
 
