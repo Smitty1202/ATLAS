@@ -367,8 +367,6 @@ mod tests {
         std::env::remove_var("PAL_LAB_WGS_ROOT");
         assert_eq!(stores.len(), 1, "one store under the override root");
         assert_eq!(stores[0].user_id, "0000000000000001");
-        assert!(stores[0]
-            .wgs_dir
-            .ends_with("0000000000000001_00000000000000000000000000000001"));
+        assert!(stores[0].wgs_dir.ends_with("0000000000000001_00000000000000000000000000000001"));
     }
 }

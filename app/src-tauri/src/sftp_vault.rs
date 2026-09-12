@@ -65,9 +65,7 @@ pub fn sftp_secret_load(profile: SftpProfile) -> Result<Option<StoredSecret>, St
             .map(Some)
             .map_err(|e| format!("The stored credential is corrupt: {e}")),
         Err(KeyringError::NoEntry) => Ok(None),
-        Err(e) => Err(format!(
-            "Couldn't read the credential from the OS vault: {e}"
-        )),
+        Err(e) => Err(format!("Couldn't read the credential from the OS vault: {e}")),
     }
 }
 
@@ -77,9 +75,7 @@ pub fn sftp_secret_load(profile: SftpProfile) -> Result<Option<StoredSecret>, St
 pub fn sftp_secret_forget(profile: SftpProfile) -> Result<(), String> {
     match entry(&profile)?.delete_credential() {
         Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-        Err(e) => Err(format!(
-            "Couldn't remove the credential from the OS vault: {e}"
-        )),
+        Err(e) => Err(format!("Couldn't remove the credential from the OS vault: {e}")),
     }
 }
 

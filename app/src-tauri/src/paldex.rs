@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use pal_data::gamedata::{ItemDrop, PalSpecies, ParentGender};
+use pal_data::gamedata::{ItemDrop, ParentGender, PalSpecies};
 use pal_data::types::Gender;
 use pal_data::GameData;
 use serde::Serialize;
@@ -25,16 +25,8 @@ pub struct PassiveRef {
 
 fn passive_ref(gd: &GameData, id: &str) -> PassiveRef {
     match gd.passive_by_id(id) {
-        Some(p) => PassiveRef {
-            id: p.internal_name.clone(),
-            name: p.name.clone(),
-            rank: p.rank,
-        },
-        None => PassiveRef {
-            id: id.to_string(),
-            name: id.to_string(),
-            rank: 0,
-        },
+        Some(p) => PassiveRef { id: p.internal_name.clone(), name: p.name.clone(), rank: p.rank },
+        None => PassiveRef { id: id.to_string(), name: id.to_string(), rank: 0 },
     }
 }
 
@@ -84,11 +76,7 @@ pub struct SpeciesRef {
 }
 
 fn species_ref(sp: &PalSpecies) -> SpeciesRef {
-    SpeciesRef {
-        id: sp.internal_name.clone(),
-        name: sp.name.clone(),
-        paldex_no: sp.paldex_no,
-    }
+    SpeciesRef { id: sp.internal_name.clone(), name: sp.name.clone(), paldex_no: sp.paldex_no }
 }
 
 /// One species row for the pal-dex list.
@@ -252,11 +240,9 @@ pub fn paldex_species_detail(id: String) -> Result<SpeciesDetail, String> {
         } else {
             continue;
         };
-        let (Some(pa), Some(pb), Some(ch)) = (
-            gd.species_at(e.parent1),
-            gd.species_at(e.parent2),
-            gd.species_at(e.child),
-        ) else {
+        let (Some(pa), Some(pb), Some(ch)) =
+            (gd.species_at(e.parent1), gd.species_at(e.parent2), gd.species_at(e.child))
+        else {
             continue;
         };
         unique_combos.push(UniqueCombo {
@@ -270,18 +256,12 @@ pub fn paldex_species_detail(id: String) -> Result<SpeciesDetail, String> {
     let learnset = gd
         .learnset(idx)
         .iter()
-        .map(|m| LearnMoveEntry {
-            id: m.waza_id.clone(),
-            level: m.level,
-        })
+        .map(|m| LearnMoveEntry { id: m.waza_id.clone(), level: m.level })
         .collect();
 
     Ok(SpeciesDetail {
         species: species_entry(gd, sp),
-        breeding: BreedingNotes {
-            parent_pair_count,
-            unique_combos,
-        },
+        breeding: BreedingNotes { parent_pair_count, unique_combos },
         learnset,
         drops: sp.drops.clone(),
     })
@@ -334,7 +314,9 @@ pub fn breeding_child(
     }
 
     Ok(ChildResult {
-        child: child_idx.and_then(|c| gd.species_at(c)).map(species_ref),
+        child: child_idx
+            .and_then(|c| gd.species_at(c))
+            .map(species_ref),
     })
 }
 
@@ -369,16 +351,10 @@ pub fn breeding_parents(child: String) -> Result<ParentsResult, String> {
         .take(MAX_PAIRS)
         .filter_map(|&(a, b)| {
             let (pa, pb) = (gd.species_at(a)?, gd.species_at(b)?);
-            Some(ParentPair {
-                parent_a: species_ref(pa),
-                parent_b: species_ref(pb),
-            })
+            Some(ParentPair { parent_a: species_ref(pa), parent_b: species_ref(pb) })
         })
         .collect();
-    Ok(ParentsResult {
-        total: all.len(),
-        pairs,
-    })
+    Ok(ParentsResult { total: all.len(), pairs })
 }
 
 /// One parent pair that breeds into a target child, per the frozen `ReversePair`
@@ -565,11 +541,7 @@ pub fn dex_reachability(owned_species: Vec<String>) -> Result<DexReach, String> 
         .filter_map(|name| gd.species_index(name))
         .collect();
     let (steps, witness) = breed_reachability(gd, &seed);
-    let name = |i: u16| {
-        gd.species_at(i)
-            .map(|s| s.internal_name.clone())
-            .unwrap_or_default()
-    };
+    let name = |i: u16| gd.species_at(i).map(|s| s.internal_name.clone()).unwrap_or_default();
     let species: Vec<DexReachEntry> = (0..gd.species_count() as u16)
         .filter_map(|i| {
             gd.species_at(i).map(|sp| DexReachEntry {
@@ -611,10 +583,7 @@ mod tests {
         let parents = breeding_parents("Anubis".into()).expect("Anubis exists");
         assert!(parents.total > 0, "expected >=1 parent pair for Anubis");
         assert!(!parents.pairs.is_empty(), "expected non-empty pairs");
-        assert!(
-            parents.pairs.len() <= MAX_PAIRS,
-            "pairs capped at {MAX_PAIRS}"
-        );
+        assert!(parents.pairs.len() <= MAX_PAIRS, "pairs capped at {MAX_PAIRS}");
     }
 
     /// Forward-consistency property: every emitted parent pair, when bred
@@ -654,10 +623,7 @@ mod tests {
         let pairs = reverse_breeding("CatMage_Fire".to_string()).expect("reverse");
         assert_eq!(pairs.len(), 2, "CatMage_Fire has exactly two parent pairs");
 
-        let unique = pairs
-            .iter()
-            .find(|p| p.kind == "unique")
-            .expect("a unique pair");
+        let unique = pairs.iter().find(|p| p.kind == "unique").expect("a unique pair");
         assert!(
             unique.parent1_gender.is_some() && unique.parent2_gender.is_some(),
             "unique combo carries both gender pins"
@@ -668,10 +634,7 @@ mod tests {
             "unique combo is CatMage x FoxMage, got {unique_names:?}"
         );
 
-        let rank = pairs
-            .iter()
-            .find(|p| p.kind == "rank")
-            .expect("a rank pair");
+        let rank = pairs.iter().find(|p| p.kind == "rank").expect("a rank pair");
         assert!(
             rank.parent1_gender.is_none() && rank.parent2_gender.is_none(),
             "rank pair has null genders"
@@ -795,8 +758,7 @@ mod tests {
             node: &pal_solver::solver::results::PlanNode,
             out: &mut Vec<pal_data::types::Guid>,
         ) {
-            if let pal_solver::solver::results::PlanSource::Owned { instance_id, .. } = &node.source
-            {
+            if let pal_solver::solver::results::PlanSource::Owned { instance_id, .. } = &node.source {
                 out.push(*instance_id);
             }
             for c in &node.children {
@@ -878,9 +840,7 @@ mod tests {
         // Sanity: at least one plan-referenced owned pal made it into the roster,
         // otherwise dev-mode hover-by-instance can't be demoed.
         assert!(
-            plan_owned_ids
-                .iter()
-                .any(|id| summary.pals.iter().any(|p| &p.instance_id == id)),
+            plan_owned_ids.iter().any(|id| summary.pals.iter().any(|p| &p.instance_id == id)),
             "save-summary must retain >=1 owned pal referenced by solve-result plans",
         );
         write(
@@ -914,16 +874,11 @@ mod tests {
         // --- Pal-dex reference fixtures (round 2) ---
         // Detail for every species so any clicked pal renders in dev; the map is
         // keyed by internal id. Small per entry (list row + breeding notes).
-        let all_ids: Vec<String> = GameData::get()
-            .species()
-            .map(|sp| sp.internal_name.clone())
-            .collect();
+        let all_ids: Vec<String> =
+            GameData::get().species().map(|sp| sp.internal_name.clone()).collect();
         let mut detail_map: Map<String, SpeciesDetail> = Map::new();
         for id in &all_ids {
-            detail_map.insert(
-                id.clone(),
-                paldex_species_detail(id.clone()).expect("detail"),
-            );
+            detail_map.insert(id.clone(), paldex_species_detail(id.clone()).expect("detail"));
         }
         write(
             "paldex-species-detail.json",
@@ -940,10 +895,7 @@ mod tests {
             res.pairs.truncate(FIXTURE_PAIRS);
             parents_map.insert(id.clone(), res);
         }
-        write(
-            "breeding-parents.json",
-            serde_json::to_string(&parents_map).unwrap(),
-        );
+        write("breeding-parents.json", serde_json::to_string(&parents_map).unwrap());
 
         // reverse-breeding.json — `reverse_breeding` output for every species,
         // keyed by internal id, for the BRED FROM panel. Capped to a display
@@ -958,60 +910,31 @@ mod tests {
             res.truncate(FIXTURE_REVERSE_PAIRS);
             reverse_map.insert(id.clone(), res);
         }
-        write(
-            "reverse-breeding.json",
-            serde_json::to_string(&reverse_map).unwrap(),
-        );
+        write("reverse-breeding.json", serde_json::to_string(&reverse_map).unwrap());
 
         // Forward breeding (child of a x b) for every pair with a featured
         // first parent. Covers the "breed with..." widget on the pages screenshot
         // review exercises; the dev shim falls back to null for uncovered pairs.
         // Keyed by canonical "min_id|max_id"; only resolvable pairs are stored.
         const FEATURED: &[&str] = &[
-            "Anubis",
-            "JetDragon",
-            "IceHorse",
-            "KingBahamut",
-            "Bastet",
-            "SheepBall",
-            "PinkCat",
-            "ChickenPal",
-            "ElecPanda",
-            "Horus",
-            "CaptainPenguin",
-            "NegativeKoala",
-            "LazyDragon",
-            "Deer",
-            "Monkey",
-            "Kitsunebi",
-            "Ganesha",
-            "Sekhmet",
-            "FairyDragon",
-            "BlueDragon",
-            "Kelpie",
-            "Plesiosaur",
-            "Serpent_Ground",
-            "CuteFox",
+            "Anubis", "JetDragon", "IceHorse", "KingBahamut", "Bastet", "SheepBall",
+            "PinkCat", "ChickenPal", "ElecPanda", "Horus", "CaptainPenguin",
+            "NegativeKoala", "LazyDragon", "Deer", "Monkey", "Kitsunebi", "Ganesha",
+            "Sekhmet", "FairyDragon", "BlueDragon", "Kelpie", "Plesiosaur",
+            "Serpent_Ground", "CuteFox",
         ];
         let mut child_map: Map<String, SpeciesRef> = Map::new();
         for f in FEATURED {
             for t in &all_ids {
-                let res =
-                    breeding_child((*f).to_string(), t.clone(), None, None).expect("child lookup");
+                let res = breeding_child((*f).to_string(), t.clone(), None, None)
+                    .expect("child lookup");
                 if let Some(child) = res.child {
-                    let (lo, hi) = if *f <= t.as_str() {
-                        (*f, t.as_str())
-                    } else {
-                        (t.as_str(), *f)
-                    };
+                    let (lo, hi) = if *f <= t.as_str() { (*f, t.as_str()) } else { (t.as_str(), *f) };
                     child_map.entry(format!("{lo}|{hi}")).or_insert(child);
                 }
             }
         }
-        write(
-            "breeding-child.json",
-            serde_json::to_string(&child_map).unwrap(),
-        );
+        write("breeding-child.json", serde_json::to_string(&child_map).unwrap());
     }
 
     /// (a) An owned species reports steps=0 / owned=true and no witness.
@@ -1049,11 +972,7 @@ mod tests {
             .find(|e| e.internal_name == "Anubis")
             .expect("Anubis in dex");
         assert!(!e.owned, "bred species not owned");
-        assert_eq!(
-            e.steps,
-            Some(1),
-            "direct child of two owned parents is 1 step"
-        );
+        assert_eq!(e.steps, Some(1), "direct child of two owned parents is 1 step");
         let (wa, wb) = e.witness.as_ref().expect("bred species carries a witness");
         let ia = gd.species_index(wa).expect("witness parent a exists");
         let ib = gd.species_index(wb).expect("witness parent b exists");
@@ -1082,11 +1001,7 @@ mod tests {
         let p2 = gd.species_at(pair.parent2).unwrap().internal_name.clone();
         let reach = dex_reachability(vec![p1, p2]).expect("ok");
         // BFS actually expanded past the seed...
-        let bred = reach
-            .species
-            .iter()
-            .filter(|e| matches!(e.steps, Some(s) if s > 0))
-            .count();
+        let bred = reach.species.iter().filter(|e| matches!(e.steps, Some(s) if s > 0)).count();
         assert!(bred > 0, "BFS should breed at least one new species");
         // ...yet some species remain unreachable from this small seed.
         let none = reach
@@ -1104,11 +1019,7 @@ mod tests {
     fn dex_reachability_unknown_names_ok() {
         let gd = GameData::get();
         let reach = dex_reachability(vec!["NotARealPal".into(), "".into()]).expect("ok");
-        assert_eq!(
-            reach.species.len(),
-            gd.species_count(),
-            "one row per species"
-        );
+        assert_eq!(reach.species.len(), gd.species_count(), "one row per species");
         assert!(
             reach.species.iter().all(|e| e.steps.is_none() && !e.owned),
             "empty effective seed yields no reachable species"

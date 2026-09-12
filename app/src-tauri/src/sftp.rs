@@ -21,9 +21,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use parking_lot::Mutex as PlMutex;
 use serde::{Deserialize, Serialize};
 use tauri::{async_runtime, AppHandle, Emitter, Manager, State};
+use parking_lot::Mutex as PlMutex;
 use tokio::sync::Mutex;
 
 use russh::client::{self, AuthResult, Handle, Handler};
@@ -272,8 +272,7 @@ fn is_hot_dir(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if matches!(
         lower.as_str(),
-        "pal"
-            | "palserver"
+        "pal" | "palserver"
             | "saved"
             | "savegames"
             | "steamapps"
@@ -378,7 +377,9 @@ async fn scan_worlds<F: RemoteFs>(fs: &F, root: &str) -> Result<Vec<SftpWorld>, 
         let players = match fs.list(&join(&wd, "Players")).await {
             Ok(entries) => entries
                 .iter()
-                .filter(|e| !e.is_dir && e.name.ends_with(".sav") && !e.name.ends_with("_dps.sav"))
+                .filter(|e| {
+                    !e.is_dir && e.name.ends_with(".sav") && !e.name.ends_with("_dps.sav")
+                })
                 .count() as u32,
             Err(_) => 0,
         };
@@ -427,9 +428,7 @@ async fn download_bundle<F: RemoteFs>(fs: &F, world_dir: &str) -> Result<Bundle,
                 continue;
             }
             let p = join(&join(base, "Players"), &e.name);
-            let Ok(bytes) = fs.read(&p).await else {
-                continue;
-            };
+            let Ok(bytes) = fs.read(&p).await else { continue };
             if e.name.ends_with("_dps.sav") {
                 dps.push((e.name, bytes));
             } else {
@@ -526,10 +525,7 @@ struct ClientHandler {
 impl Handler for ClientHandler {
     type Error = russh::Error;
 
-    async fn check_server_key(
-        &mut self,
-        server_public_key: &PublicKey,
-    ) -> Result<bool, Self::Error> {
+    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool, Self::Error> {
         let fp = server_public_key.fingerprint(HashAlg::Sha256).to_string();
         *self.fingerprint.lock() = Some(fp);
         Ok(true)
@@ -601,11 +597,7 @@ fn is_disconnect_class(e: &russh::Error) -> bool {
 /// just means the goodbye can't be delivered, which is fine.
 async fn graceful_bye(handle: &Handle<ClientHandler>) {
     let _ = handle
-        .disconnect(
-            russh::Disconnect::ByApplication,
-            "atlas: session closed",
-            "",
-        )
+        .disconnect(russh::Disconnect::ByApplication, "atlas: session closed", "")
         .await;
 }
 
@@ -679,16 +671,10 @@ async fn do_connect(
                 .await
                 .map_err(|e| format!("auth error: {e}"))?
         }
-        other => {
-            return Err(format!("unknown auth method: {other} (expected password|key)").into())
-        }
+        other => return Err(format!("unknown auth method: {other} (expected password|key)").into()),
     };
     if !matches!(auth, AuthResult::Success) {
-        return Err(
-            "authentication failed (bad credentials or method not allowed)"
-                .to_string()
-                .into(),
-        );
+        return Err("authentication failed (bad credentials or method not allowed)".to_string().into());
     }
 
     // Channel / subsystem open is where the reconnect-after-restart collision
@@ -742,9 +728,7 @@ async fn dial_with_retry(
                 RECONNECT_BACKOFF.as_millis()
             );
             tokio::time::sleep(RECONNECT_BACKOFF).await;
-            do_connect(app, profile, secret)
-                .await
-                .map_err(retry_failure_message)
+            do_connect(app, profile, secret).await.map_err(retry_failure_message)
         }
         Err(e) => Err(e.message),
     }
@@ -1211,8 +1195,7 @@ mod tests {
         assert!(known, "matching a prior entry is 'known'");
 
         // Different port is a distinct host entry: first-seen again.
-        let known =
-            verify_against_store(&path, "host.example", 2222, "SHA256:BBB").expect("store2");
+        let known = verify_against_store(&path, "host.example", 2222, "SHA256:BBB").expect("store2");
         assert!(!known);
 
         // CHANGED fingerprint for a stored host: hard error naming both.
@@ -1257,8 +1240,7 @@ mod tests {
             self
         }
         fn file(&mut self, path: &str, bytes: &[u8], mtime_ms: u64) -> &mut Self {
-            self.files
-                .insert(path.to_string(), (bytes.to_vec(), mtime_ms));
+            self.files.insert(path.to_string(), (bytes.to_vec(), mtime_ms));
             self
         }
         /// Insert an owned dir listing (for programmatically-built wide trees).
@@ -1292,10 +1274,7 @@ mod tests {
                 });
             }
             if self.dirs.contains_key(path.trim_end_matches('/')) {
-                return Ok(RemoteStat {
-                    size: 0,
-                    mtime_ms: 0,
-                });
+                return Ok(RemoteStat { size: 0, mtime_ms: 0 });
             }
             Err(format!("no such path: {path}"))
         }
@@ -1311,10 +1290,7 @@ mod tests {
     async fn scan_root_is_single_world() {
         let mut fs = MockFs::default();
         fs.dir("/srv/world", &[("Players", true), ("Level.sav", false)])
-            .dir(
-                "/srv/world/Players",
-                &[("p1.sav", false), ("p1_dps.sav", false)],
-            )
+            .dir("/srv/world/Players", &[("p1.sav", false), ("p1_dps.sav", false)])
             .file("/srv/world/Level.sav", b"x", 1_700_000_000_000)
             .file("/srv/world/Players/p1.sav", b"x", 0)
             .file("/srv/world/Players/p1_dps.sav", b"x", 0);
@@ -1369,11 +1345,7 @@ mod tests {
         let mut fs = MockFs::default();
         fs.dir(
             "/w",
-            &[
-                ("Players", true),
-                ("Level.sav", false),
-                ("WorldOption.sav", false),
-            ],
+            &[("Players", true), ("Level.sav", false), ("WorldOption.sav", false)],
         )
         .dir("/w/Players", &[("p1.sav", false), ("p1_dps.sav", false)])
         .file("/w/Level.sav", b"level", 5)
@@ -1406,18 +1378,11 @@ mod tests {
                 &format!("/Pal/Saved/SaveGames/0/{guid}"),
                 &[("Level.sav", false)],
             )
-            .file(
-                &format!("/Pal/Saved/SaveGames/0/{guid}/Level.sav"),
-                b"x",
-                99,
-            );
+            .file(&format!("/Pal/Saved/SaveGames/0/{guid}/Level.sav"), b"x", 99);
 
         let worlds = scan_worlds(&fs, "/").await.expect("scan");
         assert_eq!(worlds.len(), 1);
-        assert_eq!(
-            worlds[0].world_dir,
-            format!("/Pal/Saved/SaveGames/0/{guid}")
-        );
+        assert_eq!(worlds[0].world_dir, format!("/Pal/Saved/SaveGames/0/{guid}"));
         assert_eq!(worlds[0].mtime_ms, 99);
     }
 
@@ -1452,11 +1417,8 @@ mod tests {
         for i in 0..500 {
             late.dir_owned(&format!("/j/junk{i:04}"), Vec::new());
         }
-        late.dir("/j/junk0499_world", &[("Level.sav", false)]).file(
-            "/j/junk0499_world/Level.sav",
-            b"x",
-            1,
-        );
+        late.dir("/j/junk0499_world", &[("Level.sav", false)])
+            .file("/j/junk0499_world/Level.sav", b"x", 1);
         let worlds = scan_worlds(&late, "/j").await.expect("scan (no error)");
         assert!(worlds.is_empty(), "late world beyond budget not found");
         assert!(
@@ -1474,8 +1436,7 @@ mod tests {
         for i in 0..500 {
             early.dir_owned(&format!("/j/junk{i:04}"), Vec::new());
         }
-        early
-            .dir("/j/Pal", &[("Level.sav", false)])
+        early.dir("/j/Pal", &[("Level.sav", false)])
             .file("/j/Pal/Level.sav", b"x", 7);
         let worlds = scan_worlds(&early, "/j").await.expect("scan");
         assert_eq!(worlds.len(), 1, "hot dir expanded before junk");
@@ -1534,10 +1495,7 @@ mod tests {
             russh::Error::RequestDenied,
             russh::Error::WrongChannel,
         ] {
-            assert!(
-                !is_disconnect_class(&e),
-                "should NOT be disconnect-class: {e:?}"
-            );
+            assert!(!is_disconnect_class(&e), "should NOT be disconnect-class: {e:?}");
         }
     }
 
