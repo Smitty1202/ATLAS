@@ -1,0 +1,64 @@
+name: Narrow Map SFTP fix diff
+
+on:
+  push:
+    branches:
+      - fix/sftp-local-map-data
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.event.head_commit.message == 'Add temporary SFTP diff cleanup workflow'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore unrelated Rust files and clean sftp.rs
+        shell: pwsh
+        run: |
+          git checkout origin/main -- `
+            app/src-tauri/src/lib.rs `
+            app/src-tauri/src/paldex.rs `
+            app/src-tauri/src/save.rs `
+            app/src-tauri/src/sftp.rs `
+            app/src-tauri/src/sftp_vault.rs `
+            app/src-tauri/src/solver.rs `
+            app/src-tauri/src/updater.rs `
+            app/src-tauri/src/xbox.rs
+          python .github/scripts/narrow-map-sftp-diff.py
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Check desktop code
+        run: cargo check --manifest-path app/src-tauri/Cargo.toml
+
+      - name: Compile desktop tests without executing runner-sensitive binary
+        run: cargo test --manifest-path app/src-tauri/Cargo.toml --no-run
+
+      - name: Build frontend
+        working-directory: app
+        run: bun run build
+
+      - name: Commit narrowed verified fix and remove temporary automation
+        shell: pwsh
+        run: |
+          Remove-Item .github/scripts/narrow-map-sftp-diff.py -Force
+          Remove-Item .github/workflows/narrow-map-sftp-diff.yml -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Narrow SFTP map fix diff"
+          git push origin HEAD:fix/sftp-local-map-data
