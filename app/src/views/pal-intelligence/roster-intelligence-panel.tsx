@@ -22,6 +22,20 @@ const COVERAGE_STYLE: Record<CoverageKind, string> = {
   missing: "border-bad/35 bg-bad/5 text-bad",
 };
 
+function roleBadge(candidate: RosterRoleCandidate): string {
+  if (candidate.suitability !== null) {
+    const label = candidate.role === "mining"
+      ? "Mining"
+      : candidate.role === "lumbering"
+        ? "Lumbering"
+        : "Transport";
+    return `${label} Lv${candidate.suitability}`;
+  }
+  return candidate.relevantPassives.length > 0
+    ? `${candidate.relevantPassives.length} combat traits`
+    : "Stats / IVs";
+}
+
 function CandidateRow({
   candidate,
   index,
@@ -41,7 +55,7 @@ function CandidateRow({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-medium text-ink">{species.name}</span>
             {pal.nickname && <span className="text-[11px] text-ink-faint">“{pal.nickname}”</span>}
-            {candidate.suitability !== null && <Tag>{candidate.suitability} work</Tag>}
+            <Tag>{roleBadge(candidate)}</Tag>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-wider text-ink-faint">
             <span>Lv {pal.level}</span>

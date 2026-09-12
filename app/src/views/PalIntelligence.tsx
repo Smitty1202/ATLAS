@@ -384,12 +384,27 @@ export default function PalIntelligence() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber">Pal Intelligence</div>
-            <h1 className="mt-0.5 font-display text-xl font-bold tracking-wide text-ink">Owned Pal Inventory</h1>
-            <p className="mt-1 text-[12px] text-ink-faint">Species-first inventory with every aggregate traceable to the exact save records.</p>
+            <h1 className="mt-0.5 font-display text-xl font-bold tracking-wide text-ink">
+              {mode === "roster" ? "Roster Intelligence" : "Owned Pal Inventory"}
+            </h1>
+            <p className="mt-1 text-[12px] text-ink-faint">
+              {mode === "roster"
+                ? "Best owned options across your active roster, with every recommendation backed by visible role evidence."
+                : "Species-first inventory with every aggregate traceable to the exact save records."}
+            </p>
           </div>
           <div className="text-right font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-            <div><span className="text-amber">{groups.length}</span> species shown</div>
-            <div><span className="text-ink-dim">{visibleInstances}</span> / {scoped.length} Pals</div>
+            {mode === "roster" ? (
+              <>
+                <div><span className="text-amber">4</span> roster roles</div>
+                <div><span className="text-ink-dim">{scoped.length}</span> scoped Pals</div>
+              </>
+            ) : (
+              <>
+                <div><span className="text-amber">{groups.length}</span> species shown</div>
+                <div><span className="text-ink-dim">{visibleInstances}</span> / {scoped.length} Pals</div>
+              </>
+            )}
           </div>
         </div>
       </header>

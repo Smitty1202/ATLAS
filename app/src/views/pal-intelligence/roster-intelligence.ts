@@ -182,6 +182,25 @@ function combatEvidence(
   };
 }
 
+const COMBAT_COVERAGE_EFFECTS = new Set([
+  "ShotAttack",
+  "Defense",
+  "MaxHP",
+  "LifeSteal",
+  "ActiveSkillCoolTime_Decrease",
+]);
+
+function isHighConfidenceCombatPassive(row: PassiveEntry): boolean {
+  if (!highTier(row)) return false;
+  return row.effects.some((effect) =>
+    COMBAT_COVERAGE_EFFECTS.has(effect.type) || effect.type.startsWith("ElementBoost_"),
+  );
+}
+
+function combatTuningRows(evidence: CombatEvidence): PassiveEntry[] {
+  return evidence.passives.filter(isHighConfidenceCombatPassive);
+}
+
 function compareCombat(a: CombatEvidence, b: CombatEvidence): number {
   return (
     b.passives.filter(highTier).length - a.passives.filter(highTier).length ||
@@ -257,22 +276,27 @@ function combatCoverage(rows: CombatEvidence[]): Pick<RosterRoleSummary, "covera
   if (rows.length === 0) {
     return { coverage: "missing", coverageReason: "No owned Pal is available for combat ranking." };
   }
-  const tuned = rows.filter((row) => row.passives.length > 0);
-  if (tuned.length >= 2) {
+
+  // Coverage is deliberately stricter than ranking. A single generic combat-ish
+  // passive is useful ranking evidence, but it does not prove that the roster has
+  // a purpose-built combat option. Count only species whose best owned copy has
+  // at least two high-tier (R3+/Rainbow/World Tree) offensive combat passives.
+  const tuned = rows.filter((row) => combatTuningRows(row).length >= 2);
+  if (tuned.length >= 3) {
     return {
       coverage: "healthy",
-      coverageReason: `${tuned.length} owned species carry explicit positive combat-passive evidence.`,
+      coverageReason: `${tuned.length} owned species have purpose-built combat tuning (2+ high-tier offensive combat passives).`,
     };
   }
-  if (tuned.length === 1) {
+  if (tuned.length > 0) {
     return {
       coverage: "thin",
-      coverageReason: `Only ${tuned[0]!.species.name} carries explicit positive combat-passive evidence; other options rely on stats/IVs.`,
+      coverageReason: `${tuned.length} owned ${tuned.length === 1 ? "species has" : "species have"} purpose-built combat tuning; backup depth is limited.`,
     };
   }
   return {
     coverage: "weak",
-    coverageReason: "No owned species carries an explicit positive combat passive; rankings fall back to species stats and IVs.",
+    coverageReason: "No owned species has 2+ high-tier offensive combat passives; rankings still show the best available stats and passive evidence.",
   };
 }
 

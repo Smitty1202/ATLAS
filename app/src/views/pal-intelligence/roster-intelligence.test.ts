@@ -105,6 +105,9 @@ const passives = new Map<string, PassiveEntry>([
   ["Artisan", passive("Artisan", 3, "CraftSpeed", "Artisan")],
   ["Runner", passive("Runner", 2, "MoveSpeed", "Runner")],
   ["Musclehead", passive("Musclehead", 3, "ShotAttack", "Musclehead")],
+  ["Ferocious", passive("Ferocious", 3, "ShotAttack", "Ferocious")],
+  ["Legend", passive("Legend", 4, "MaxHP", "Legend")],
+  ["RunnerCombatish", passive("RunnerCombatish", 2, "MoveSpeed", "Runner")],
 ]);
 
 function role(summary: ReturnType<typeof buildRosterIntelligence>, name: string) {
@@ -180,6 +183,45 @@ describe("cross-species Roster Intelligence", () => {
       passives,
     );
     expect(role(summary, "combat").candidates[0]?.species.id).toBe("Tuned");
+  });
+
+  test("combat coverage requires purpose-built high-tier tuning instead of any combat-ish passive", () => {
+    const a = species("A");
+    const b = species("B");
+    const c = species("C");
+    const rows = new Map([[a.id, a], [b.id, b], [c.id, c]]);
+
+    const weakSummary = buildRosterIntelligence(
+      [
+        pal("A", { passives: ["Musclehead"] }),
+        pal("B", { passives: ["RunnerCombatish"] }),
+      ],
+      rows,
+      passives,
+    );
+    expect(role(weakSummary, "combat").coverage).toBe("weak");
+
+    const thinSummary = buildRosterIntelligence(
+      [
+        pal("A", { passives: ["Musclehead", "Ferocious"] }),
+        pal("B", { passives: ["Musclehead"] }),
+      ],
+      rows,
+      passives,
+    );
+    expect(role(thinSummary, "combat").coverage).toBe("thin");
+
+    const healthySummary = buildRosterIntelligence(
+      [
+        pal("A", { passives: ["Musclehead", "Ferocious"] }),
+        pal("B", { passives: ["Musclehead", "Legend"] }),
+        pal("C", { passives: ["Ferocious", "Legend"] }),
+      ],
+      rows,
+      passives,
+    );
+    expect(role(healthySummary, "combat").coverage).toBe("healthy");
+    expect(role(healthySummary, "combat").coverageReason).toContain("3 owned species");
   });
 
   test("coverage calls out weak, thin, and healthy specialist depth explicitly", () => {
