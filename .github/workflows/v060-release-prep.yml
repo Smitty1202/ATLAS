@@ -45,14 +45,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          function Run-CargoTest {
-            param([string[]]$Args)
-            & cargo test @Args
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          function Invoke-CargoTest {
+            param([string[]]$CargoArgs)
+            & cargo test @CargoArgs
+            if ($LASTEXITCODE -ne 0) {
+              throw "cargo test failed: $($CargoArgs -join ' ')"
+            }
           }
 
-          Run-CargoTest @("-p", "pal-data")
-          Run-CargoTest @("-p", "pal-solver", "--lib")
+          Invoke-CargoTest -CargoArgs @("-p", "pal-data")
+          Invoke-CargoTest -CargoArgs @("-p", "pal-solver", "--lib")
 
           $solverTests = @(
             "oracle_ivs",
@@ -71,11 +73,20 @@ jobs:
             "solver_working_set"
           )
           foreach ($testName in $solverTests) {
-            Run-CargoTest @("-p", "pal-solver", "--test", $testName)
+            Invoke-CargoTest -CargoArgs @("-p", "pal-solver", "--test", $testName)
           }
 
-          Run-CargoTest @("-p", "pal-web")
-          Run-CargoTest @("-p", "pal-save", "--lib", "--", "--skip", "coop", "--skip", "dedicated_client_localdata_reveal")
+          Invoke-CargoTest -CargoArgs @("-p", "pal-web")
+          Invoke-CargoTest -CargoArgs @(
+            "-p", "pal-save", "--lib", "--",
+            "--skip", "coop_localdata_fog_dimensions_and_reveal",
+            "--skip", "coop_player_record_known_values",
+            "--skip", "coop_player_towers_defeated_grass",
+            "--skip", "dedicated_client_localdata_reveal",
+            "--skip", "coop_bases_resolve_with_ground_truth_coords",
+            "--skip", "coop_level_map_objects_decode_with_sane_coords",
+            "--skip", "coop_save_container_kinds_fully_classified"
+          )
 
       - name: Desktop Rust check
         run: cargo check --manifest-path app/src-tauri/Cargo.toml
