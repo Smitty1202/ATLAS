@@ -24,6 +24,14 @@ jobs:
       - name: Implement Condensation Intelligence
         run: python .github/scripts/implement-condensation.py
 
+      - name: Fix TypeScript-compatible matcher
+        shell: pwsh
+        run: |
+          $path = "app/src/views/pal-intelligence/condensation.test.ts"
+          $text = Get-Content $path -Raw
+          $text = $text.Replace('expect(summary.targets.length).toBeGreaterThan(0);', 'expect(summary.targets.length > 0).toBe(true);')
+          Set-Content -Path $path -Value $text -NoNewline
+
       - name: Install frontend dependencies
         working-directory: app
         run: bun install --frozen-lockfile
