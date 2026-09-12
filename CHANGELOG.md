@@ -3,6 +3,14 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.5.1] - Unreleased
+
+### Fixed
+- World Map now combines SFTP dedicated-server Level/Players data with the matching local client `LocalData.sav`, restoring player positions, bases, and fog of war for remote worlds.
+- Added Palworld 1.0 guild-marker decoding from `Level.sav` `GroupSaveDataMap`, so shared guild markers render for local and dedicated-server worlds while legacy LocalData pins remain supported.
+- Added a per-save LocalData override in the Map filter so users can manually select/clear the client map-data file when automatic world-folder matching is ambiguous or unavailable.
+- Hardened custom map-marker decoding with a targeted LocalData marker scan for current Palworld saves where fog parses but the generic GVAS struct-array decoder yields zero pins.
+
 ## [0.5.0] - 2026-09-11
 
 ### Added

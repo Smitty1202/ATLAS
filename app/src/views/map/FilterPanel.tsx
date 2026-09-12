@@ -108,6 +108,10 @@ export default function FilterPanel({
   fogOn,
   showHidden,
   setShowHidden,
+  localMapSource,
+  localMapOverride,
+  onChooseLocalMapData,
+  onClearLocalMapData,
 }: {
   filters: LayerFilters;
   setFilter: (key: keyof LayerFilters, on: boolean) => void;
@@ -120,6 +124,10 @@ export default function FilterPanel({
   fogOn: boolean;
   showHidden: boolean;
   setShowHidden: (on: boolean) => void;
+  localMapSource: string | null;
+  localMapOverride: string | null;
+  onChooseLocalMapData: () => void;
+  onClearLocalMapData: () => void;
 }) {
   const ft = counts.fastTravel;
   const ef = counts.effigies;
@@ -206,6 +214,20 @@ export default function FilterPanel({
     if (next && hideFound) setFilter("hideFoundEffigies", false);
     setFilter("hideUnfoundEffigies", next);
   };
+
+  const sourceMatchesOverride =
+    localMapSource != null &&
+    localMapOverride != null &&
+    localMapSource.toLocaleLowerCase() === localMapOverride.toLocaleLowerCase();
+  const localMapStatus = localMapSource
+    ? sourceMatchesOverride
+      ? "Manual override"
+      : localMapOverride
+        ? "Auto-detected · override unavailable"
+        : "Auto-detected"
+    : localMapOverride
+      ? "Override unavailable"
+      : "Not found";
 
   return (
     <div className="absolute right-0 top-full z-20 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-line bg-panel/95 p-1.5 shadow-lg backdrop-blur">
@@ -401,6 +423,52 @@ export default function FilterPanel({
           countTitle="Your base camps"
         />
       )}
+
+      <div className="mt-1 border-t border-line-soft px-2 pb-1 pt-2">
+        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+          Local map data
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <span
+            className={`font-mono text-[10px] ${
+              localMapSource ? "text-ink-dim" : "text-warn/80"
+            }`}
+          >
+            {localMapStatus}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onChooseLocalMapData}
+              className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ink-dim transition-colors hover:bg-hover hover:text-ink"
+            >
+              Choose
+            </button>
+            {localMapOverride && (
+              <button
+                type="button"
+                onClick={onClearLocalMapData}
+                className="rounded-sm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber transition-colors hover:bg-hover hover:text-amber-bright"
+              >
+                Use auto
+              </button>
+            )}
+          </div>
+        </div>
+        {localMapSource && (
+          <div
+            className="mt-1 truncate font-mono text-[9px] text-ink-faint"
+            title={localMapSource}
+          >
+            {localMapSource}
+          </div>
+        )}
+        {!localMapSource && (
+          <p className="mt-1 font-mono text-[9px] leading-relaxed tracking-wide text-ink-faint">
+            Fog and your custom markers come from this client-side file.
+          </p>
+        )}
+      </div>
 
       {fogOn && (
         <div className="mt-1 border-t border-line-soft pt-1.5">

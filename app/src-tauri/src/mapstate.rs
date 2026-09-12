@@ -5,9 +5,12 @@
 //!    grayscale PNG where 255 = revealed, 0 = fogged) + player custom markers,
 //!  - each player `.sav` -> last-known world position + `RecordData` unlock
 //!    flags (fast-travel, effigies, defeated bosses, discovered areas),
-//!  - `Level.sav` -> player nicknames (joined to the player saves by uid).
+//!  - `Level.sav` -> player nicknames + base camps.
 //!
-//! Read-only. `save_dir` is the folder that holds `Level.sav` + `Players/`.
+//! For a folder save, Level/Players are read from disk. For an SFTP sentinel,
+//! those same bytes come from the existing SFTP bundle/cache while LocalData
+//! remains client-side: explicit override first, then local auto-discovery by
+//! the remote world-folder name. Everything is read-only.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -76,7 +79,7 @@ pub struct BaseDto {
 pub struct MapState {
     /// `None` when no client `LocalData.sav` was found (graceful — no fog).
     pub fog: Option<Vec<FogLayerDto>>,
-    /// Absolute path the fog/markers were read from, or `None`.
+    /// Absolute local path the fog/markers were read from, or `None`.
     pub local_source: Option<String>,
     pub markers: Vec<MarkerDto>,
     pub players: Vec<MapPlayerState>,
@@ -86,53 +89,120 @@ pub struct MapState {
     pub bases: Option<Vec<BaseDto>>,
 }
 
-/// Read the map state for `save_dir`. Read-only. Never errors on a missing
-/// client `LocalData.sav` (fog is `null` instead); returns `Err` only when the
-/// save directory itself cannot be read.
+/// Read map state for one ATLAS save source.
+///
+/// `local_data_path` is an optional explicit client `LocalData.sav` override.
+/// When it is absent/unreadable ATLAS falls back to automatic discovery. A
+/// missing LocalData is always fail-soft (no fog/markers); SFTP connection/load
+/// errors still surface because the server-side map state cannot be built.
 #[tauri::command]
-pub fn get_map_state(save_dir: String) -> Result<MapState, String> {
-    let dir = Path::new(&save_dir);
+pub fn get_map_state(
+    save_dir: String,
+    local_data_path: Option<String>,
+) -> Result<MapState, String> {
+    if crate::sftp::is_sentinel(&save_dir) {
+        get_sftp_map_state(&save_dir, local_data_path.as_deref())
+    } else {
+        get_folder_map_state(Path::new(&save_dir), &save_dir, local_data_path.as_deref())
+    }
+}
 
-    // Decompress Level.sav once; nicknames + base camps share the blob.
-    // A missing or unreadable Level.sav degrades gracefully (no nicknames /
-    // null bases) rather than failing the whole command.
+fn get_folder_map_state(
+    dir: &Path,
+    save_source: &str,
+    local_data_path: Option<&str>,
+) -> Result<MapState, String> {
     let level_blob = decompress(&dir.join("Level.sav")).ok();
-    let nicknames: HashMap<String, String> = level_blob
-        .as_deref()
-        .and_then(|b| pal_save::read_level_sav_from_blob(b).ok())
-        .map(|s| {
-            s.players
-                .iter()
-                .map(|p| (guid_str(&p.uid), p.name.clone()))
-                .collect()
-        })
-        .unwrap_or_default();
-
+    let (nicknames, guild_markers) = level_context(level_blob.as_deref());
     let players = read_players(dir, &nicknames);
+    let bases = bases_from_level(level_blob.as_deref());
 
-    // R2: one point per player base camp, decoded lazily from
-    // `MapObjectSaveData` (NOT the shared summary hot path). `None` when the
-    // level is unreadable or has no base camps.
-    let bases = level_blob.as_deref().and_then(|blob| {
+    let (local, local_source) = discover_local_data(save_source, local_data_path);
+    Ok(assemble(local, local_source, guild_markers, players, bases))
+}
+
+fn get_sftp_map_state(
+    save_source: &str,
+    local_data_path: Option<&str>,
+) -> Result<MapState, String> {
+    let bundle = crate::sftp::load_map_bundle(save_source)?;
+    let level_blob = decompress_bytes(&bundle.level).ok();
+    let (nicknames, guild_markers) = level_context(level_blob.as_deref());
+    let players = read_players_from_parts(&bundle.players, &nicknames);
+    let bases = bases_from_level(level_blob.as_deref());
+
+    // Dedicated servers normally do NOT own the player's LocalData.sav. Resolve
+    // it on the ATLAS machine using the remote world's folder id, with the
+    // explicit per-save override taking precedence.
+    let (local, local_source) = discover_local_data(save_source, local_data_path);
+    Ok(assemble(local, local_source, guild_markers, players, bases))
+}
+
+fn assemble(
+    local: Option<LocalData>,
+    local_source: Option<String>,
+    guild_markers: Vec<CustomMarker>,
+    players: Vec<MapPlayerState>,
+    bases: Option<Vec<BaseDto>>,
+) -> MapState {
+    let (fog, mut markers) = match local {
+        Some(ld) => (Some(build_fog(ld.layers)), ld.markers),
+        None => (None, Vec::new()),
+    };
+    for marker in guild_markers {
+        if !markers
+            .iter()
+            .any(|m| m.x == marker.x && m.y == marker.y && m.icon_type == marker.icon_type)
+        {
+            markers.push(marker);
+        }
+    }
+    MapState {
+        fog,
+        local_source,
+        markers: build_markers(markers),
+        players,
+        bases,
+    }
+}
+
+fn level_context(level_blob: Option<&[u8]>) -> (HashMap<String, String>, Vec<CustomMarker>) {
+    let Some(blob) = level_blob else {
+        return (HashMap::new(), Vec::new());
+    };
+    let mut warnings = Vec::new();
+    let Ok(parsed) = pal_save::characters::parse_level(blob, &mut warnings) else {
+        return (HashMap::new(), Vec::new());
+    };
+    let nicknames = parsed
+        .players
+        .iter()
+        .map(|p| (guid_str(&p.uid), p.name.clone()))
+        .collect();
+    let markers = parsed
+        .guilds
+        .into_iter()
+        .flat_map(|g| g.markers)
+        .map(|m| CustomMarker {
+            x: m.x,
+            y: m.y,
+            icon_type: m.icon_type,
+        })
+        .collect();
+    (nicknames, markers)
+}
+
+fn bases_from_level(level_blob: Option<&[u8]>) -> Option<Vec<BaseDto>> {
+    level_blob.and_then(|blob| {
         let pts = pal_save::read_base_points(blob).ok()?;
         if pts.is_empty() {
             return None;
         }
-        Some(pts.into_iter().map(|b| BaseDto { x: b.x, y: b.y }).collect())
-    });
-
-    let (local, local_source) = discover_local_data(dir);
-    let (fog, markers) = match local {
-        Some(ld) => (Some(build_fog(ld.layers)), build_markers(ld.markers)),
-        None => (None, Vec::new()),
-    };
-
-    Ok(MapState {
-        fog,
-        local_source,
-        markers,
-        players,
-        bases,
+        Some(
+            pts.into_iter()
+                .map(|b| BaseDto { x: b.x, y: b.y })
+                .collect(),
+        )
     })
 }
 
@@ -154,29 +224,56 @@ fn read_players(dir: &Path, nicknames: &HashMap<String, String>) -> Vec<MapPlaye
         {
             continue;
         }
-        let Ok(rec) = decompress(&path).and_then(|b| {
-            pal_save::parse_player_map_state(&b).map_err(|e| e.to_string())
-        }) else {
+        let Ok(rec) = decompress(&path)
+            .and_then(|b| pal_save::parse_player_map_state(&b).map_err(|e| e.to_string()))
+        else {
             continue;
         };
-        let uid = guid_str(&rec.uid);
-        let nickname = nicknames.get(&uid).cloned().filter(|n| !n.is_empty());
-        players.push(MapPlayerState {
-            uid,
-            nickname,
-            x: rec.x,
-            y: rec.y,
-            fast_travel_unlocked: rec.fast_travel_unlocked,
-            effigies_found: rec.effigies_found,
-            effigies_found_legacy: rec.effigies_found_legacy,
-            effigies_found_by_type: build_effigy_groups(rec.effigies_found_by_type),
-            effigy_possess_num: rec.effigy_possess_num,
-            bosses_defeated: rec.bosses_defeated,
-            areas_found: rec.areas_found,
-            towers_defeated: rec.towers_defeated,
-        });
+        players.push(player_state_dto(rec, nicknames));
     }
     players
+}
+
+/// Parse the already-downloaded player-save parts from an SFTP bundle.
+fn read_players_from_parts(
+    parts: &[(String, Vec<u8>)],
+    nicknames: &HashMap<String, String>,
+) -> Vec<MapPlayerState> {
+    let mut players = Vec::new();
+    for (name, raw) in parts {
+        if name.ends_with("_dps.sav") {
+            continue;
+        }
+        let Ok(rec) = decompress_bytes(raw)
+            .and_then(|b| pal_save::parse_player_map_state(&b).map_err(|e| e.to_string()))
+        else {
+            continue;
+        };
+        players.push(player_state_dto(rec, nicknames));
+    }
+    players
+}
+
+fn player_state_dto(
+    rec: pal_save::PlayerMapRecord,
+    nicknames: &HashMap<String, String>,
+) -> MapPlayerState {
+    let uid = guid_str(&rec.uid);
+    let nickname = nicknames.get(&uid).cloned().filter(|n| !n.is_empty());
+    MapPlayerState {
+        uid,
+        nickname,
+        x: rec.x,
+        y: rec.y,
+        fast_travel_unlocked: rec.fast_travel_unlocked,
+        effigies_found: rec.effigies_found,
+        effigies_found_legacy: rec.effigies_found_legacy,
+        effigies_found_by_type: build_effigy_groups(rec.effigies_found_by_type),
+        effigy_possess_num: rec.effigy_possess_num,
+        bosses_defeated: rec.bosses_defeated,
+        areas_found: rec.areas_found,
+        towers_defeated: rec.towers_defeated,
+    }
 }
 
 fn build_effigy_groups(groups: Vec<pal_save::EffigyTypeFlags>) -> Vec<EffigyTypeFlagsDto> {
@@ -191,27 +288,69 @@ fn build_effigy_groups(groups: Vec<pal_save::EffigyTypeFlags>) -> Vec<EffigyType
 
 /// Locate + read the client `LocalData.sav` for this world.
 ///
-/// Order (contract C2): `<save_dir>/LocalData.sav` (co-op layout) ->
-/// `%LOCALAPPDATA%/Pal/Saved/SaveGames/<steamid>/<basename(save_dir)>/LocalData.sav`
-/// (client keeps per-world fog locally even for dedicated worlds, keyed by the
-/// save-dir folder name) -> `None` (no fog).
-fn discover_local_data(save_dir: &Path) -> (Option<LocalData>, Option<String>) {
-    let direct = save_dir.join("LocalData.sav");
-    if let Some(ld) = load_local(&direct) {
-        return (Some(ld), Some(direct.display().to_string()));
+/// Precedence:
+///  1. explicit manual override,
+///  2. `<save_dir>/LocalData.sav` for folder/co-op saves,
+///  3. `%LOCALAPPDATA%/Pal/Saved/SaveGames/<steamid>/<world>/LocalData.sav`.
+///
+/// For an SFTP source, `<world>` comes from the LAST component of the remote
+/// world directory in the sentinel, not from the sentinel string itself.
+fn discover_local_data(
+    save_source: &str,
+    local_data_path: Option<&str>,
+) -> (Option<LocalData>, Option<String>) {
+    if let Some(path) = local_data_path
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+    {
+        if let Some(ld) = load_local(&path) {
+            return (Some(ld), Some(path.display().to_string()));
+        }
     }
-    if let (Some(world), Ok(local_app)) = (
-        save_dir.file_name().and_then(|s| s.to_str()),
-        std::env::var("LOCALAPPDATA"),
-    ) {
-        let root = PathBuf::from(local_app).join("Pal/Saved/SaveGames");
-        if let Ok(users) = std::fs::read_dir(&root) {
-            for user in users.flatten() {
-                let cand = user.path().join(world).join("LocalData.sav");
-                if let Some(ld) = load_local(&cand) {
-                    return (Some(ld), Some(cand.display().to_string()));
-                }
-            }
+
+    if !crate::sftp::is_sentinel(save_source) {
+        let direct = Path::new(save_source).join("LocalData.sav");
+        if let Some(ld) = load_local(&direct) {
+            return (Some(ld), Some(direct.display().to_string()));
+        }
+    }
+
+    let Some(world) = world_key_from_source(save_source) else {
+        return (None, None);
+    };
+    discover_local_for_world(&world)
+}
+
+fn world_key_from_source(save_source: &str) -> Option<String> {
+    if let Some(target) = crate::sftp::parse_sentinel(save_source) {
+        return target
+            .world_dir
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+    }
+    Path::new(save_source)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn discover_local_for_world(world: &str) -> (Option<LocalData>, Option<String>) {
+    let Ok(local_app) = std::env::var("LOCALAPPDATA") else {
+        return (None, None);
+    };
+    let root = PathBuf::from(local_app).join("Pal/Saved/SaveGames");
+    let Ok(users) = std::fs::read_dir(&root) else {
+        return (None, None);
+    };
+    for user in users.flatten() {
+        let cand = user.path().join(world).join("LocalData.sav");
+        if let Some(ld) = load_local(&cand) {
+            return (Some(ld), Some(cand.display().to_string()));
         }
     }
     (None, None)
@@ -229,7 +368,11 @@ fn load_local(path: &Path) -> Option<LocalData> {
 
 fn decompress(path: &Path) -> Result<Vec<u8>, String> {
     let raw = std::fs::read(path).map_err(|e| e.to_string())?;
-    pal_save::compress::decompress_sav(&raw).map_err(|e| e.to_string())
+    decompress_bytes(&raw)
+}
+
+fn decompress_bytes(raw: &[u8]) -> Result<Vec<u8>, String> {
+    pal_save::compress::decompress_sav(raw).map_err(|e| e.to_string())
 }
 
 /// Encode each fog layer's revealed mask as a base64 grayscale PNG.
@@ -239,7 +382,11 @@ fn build_fog(layers: Vec<FogLayer>) -> Vec<FogLayerDto> {
         .filter_map(|l| {
             let revealed_pct = l.revealed_pct();
             // 255 = revealed (alpha != 0xFF), 0 = fogged.
-            let gray: Vec<u8> = l.alpha.iter().map(|&a| if a == 0xFF { 0 } else { 255 }).collect();
+            let gray: Vec<u8> = l
+                .alpha
+                .iter()
+                .map(|&a| if a == 0xFF { 0 } else { 255 })
+                .collect();
             let png = encode_gray_png(l.width as u32, l.height as u32, &gray).ok()?;
             Some(FogLayerDto {
                 map: l.map_id,
@@ -274,4 +421,24 @@ fn encode_gray_png(width: u32, height: u32, gray: &[u8]) -> Result<Vec<u8>, png:
         writer.write_image_data(gray)?;
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::world_key_from_source;
+
+    #[test]
+    fn sftp_world_key_uses_remote_world_folder() {
+        let source = "sftp://pal@server:22#/Pal/Saved/SaveGames/0/ABCDEF0123456789ABCDEF0123456789";
+        assert_eq!(
+            world_key_from_source(source).as_deref(),
+            Some("ABCDEF0123456789ABCDEF0123456789")
+        );
+    }
+
+    #[test]
+    fn sftp_world_key_tolerates_trailing_slash() {
+        let source = "sftp://pal@server:22#/srv/pal/worlds/WORLD123/";
+        assert_eq!(world_key_from_source(source).as_deref(), Some("WORLD123"));
+    }
 }
