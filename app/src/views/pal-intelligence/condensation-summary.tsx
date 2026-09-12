@@ -106,19 +106,22 @@ export function CondensationSummaryPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber">Condensation intelligence</div>
-          <div className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
-            Conservative same-species guidance. ATLAS never condenses anything and never treats Redundant as automatic fodder.
+          <div className="mt-0.5 max-w-3xl text-[11px] leading-relaxed text-ink-faint">
+            ATLAS first builds a small protected keeper core, then judges the remaining duplicates against that roster. Safe means the useful evidence is still represented somewhere in the keeper core; Likely Fodder exposes minor convenience tradeoffs instead of pretending they are risk-free.
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 font-mono text-[9px] uppercase tracking-wider text-ink-faint">
+        <div className="grid grid-cols-2 gap-2 font-mono text-[9px] uppercase tracking-wider text-ink-faint lg:grid-cols-4">
           <div className="rounded border border-good/30 bg-good/5 px-2.5 py-1.5 text-center"><span className="block text-sm font-semibold text-good">{summary.safe.length}</span>safe</div>
-          <div className="rounded border border-amber/30 bg-amber/5 px-2.5 py-1.5 text-center"><span className="block text-sm font-semibold text-amber">{summary.protected.length}</span>protected</div>
+          <div className="rounded border border-amber/30 bg-amber/5 px-2.5 py-1.5 text-center"><span className="block text-sm font-semibold text-amber">{summary.likely.length}</span>likely fodder</div>
+          <div className="rounded border border-line bg-raised/50 px-2.5 py-1.5 text-center"><span className="block text-sm font-semibold text-ink">{summary.protected.length}</span>protected core</div>
           <div className="rounded border border-line bg-raised/50 px-2.5 py-1.5 text-center"><span className="block text-sm font-semibold text-ink-dim">{summary.review.length}</span>review</div>
         </div>
       </div>
 
       <div className="mt-3 rounded-md border border-line bg-panel/50 px-3 py-2 text-[11px] text-ink-dim">
-        <span className="font-semibold text-good">{summary.safeMaterialCount}</span> safe same-species {summary.safeMaterialCount === 1 ? "copy" : "copies"} currently available as condensation material. This count deliberately does not guess Palworld stage costs.
+        <span className="font-semibold text-good">{summary.safeMaterialCount}</span> safe {summary.safeMaterialCount === 1 ? "copy" : "copies"}
+        <span className="mx-1.5 text-ink-faint">+</span>
+        <span className="font-semibold text-amber">{summary.likelyMaterialCount}</span> likely {summary.likelyMaterialCount === 1 ? "copy" : "copies"} available as same-species material. Only the green count is ATLAS's no-known-loss recommendation.
       </div>
 
       <div className="mt-3">
@@ -128,18 +131,22 @@ export function CondensationSummaryPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 xl:grid-cols-3">
+      <div className="mt-3 grid gap-2 xl:grid-cols-4">
         <details open className="overflow-hidden rounded-md border border-good/25 bg-good/[0.03]">
           <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-good">Safe to Condense · {summary.safe.length}</summary>
-          <MaterialRows rows={summary.safe} empty="No copies meet the strict safe-material rule." onOpen={onOpenPal} />
+          <MaterialRows rows={summary.safe} empty="No copies have every useful component preserved in the keeper core." onOpen={onOpenPal} />
         </details>
-        <details className="overflow-hidden rounded-md border border-amber/25 bg-amber/[0.03]">
-          <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-amber">Protected · {summary.protected.length}</summary>
-          <MaterialRows rows={summary.protected} empty="No protected copies." onOpen={onOpenPal} />
+        <details open className="overflow-hidden rounded-md border border-amber/25 bg-amber/[0.03]">
+          <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-amber">Likely Fodder · {summary.likely.length}</summary>
+          <MaterialRows rows={summary.likely} empty="No lower-confidence fodder candidates." onOpen={onOpenPal} />
+        </details>
+        <details className="overflow-hidden rounded-md border border-line bg-panel/30">
+          <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-ink">Protected Core · {summary.protected.length}</summary>
+          <MaterialRows rows={summary.protected} empty="No protected keeper-core copies." onOpen={onOpenPal} />
         </details>
         <details className="overflow-hidden rounded-md border border-line bg-panel/30">
           <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-dim">Needs Review · {summary.review.length}</summary>
-          <MaterialRows rows={summary.review} empty="No ambiguous copies need review." onOpen={onOpenPal} />
+          <MaterialRows rows={summary.review} empty="No genuinely ambiguous copies need review." onOpen={onOpenPal} />
         </details>
       </div>
     </section>
