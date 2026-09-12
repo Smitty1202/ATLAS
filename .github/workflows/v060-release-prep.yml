@@ -35,18 +35,47 @@ jobs:
         run: bun test
 
       # The repository intentionally does not carry private probe save fixtures.
-      # Compile every workspace test, then run the packages whose tests are fully
-      # self-contained plus pal-save while skipping only fixture-backed probes.
+      # Compile every workspace test, then execute all self-contained suites.
+      # pal-solver/solver_progress and the filtered pal-save cases compile above
+      # but require private save fixtures that are not committed to the repo.
       - name: Core Rust workspace test compile
         run: cargo test --workspace --no-run
 
       - name: Core Rust self-contained tests
         shell: pwsh
         run: |
-          cargo test -p pal-data
-          cargo test -p pal-solver
-          cargo test -p pal-web
-          cargo test -p pal-save --lib -- --skip coop --skip dedicated_client_localdata_reveal
+          $ErrorActionPreference = "Stop"
+          function Run-CargoTest {
+            param([string[]]$Args)
+            & cargo test @Args
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          Run-CargoTest @("-p", "pal-data")
+          Run-CargoTest @("-p", "pal-solver", "--lib")
+
+          $solverTests = @(
+            "oracle_ivs",
+            "oracle_passives",
+            "plan_node_fields",
+            "solver_budget",
+            "solver_cakes",
+            "solver_effort",
+            "solver_moves",
+            "solver_pinning",
+            "solver_queue",
+            "solver_reverser",
+            "solver_serde",
+            "solver_surgery",
+            "solver_wild",
+            "solver_working_set"
+          )
+          foreach ($testName in $solverTests) {
+            Run-CargoTest @("-p", "pal-solver", "--test", $testName)
+          }
+
+          Run-CargoTest @("-p", "pal-web")
+          Run-CargoTest @("-p", "pal-save", "--lib", "--", "--skip", "coop", "--skip", "dedicated_client_localdata_reveal")
 
       - name: Desktop Rust check
         run: cargo check --manifest-path app/src-tauri/Cargo.toml
@@ -67,12 +96,15 @@ jobs:
           if ($packageVersion -ne "0.6.0") { throw "package.json version is $packageVersion" }
           if ($tauriVersion -ne "0.6.0") { throw "tauri.conf.json version is $tauriVersion" }
           if (-not (Select-String -Path app/src-tauri/Cargo.toml -Pattern '^version = "0\.6\.0"$' -Quiet)) { throw "Cargo.toml is not 0.6.0" }
+
           $lock = Get-Content app/src-tauri/Cargo.lock -Raw
           if ($lock -notmatch '(?ms)\[\[package\]\]\s+name = "atlas"\s+version = "0\.6\.0"') { throw "Cargo.lock atlas package is not 0.6.0" }
+
           $changelog = Get-Content CHANGELOG.md -Raw
-          if ($changelog -notmatch '(?m)^## \[0\.6\.0\] - 2026-09-12$') { throw "0.6.0 changelog date missing" }
-          if ($changelog -match '(?m)^## \[0\.5\.1\]') { throw "phantom 0.5.1 section still exists" }
+          if (-not $changelog.Contains("## [0.6.0] - 2026-09-12")) { throw "0.6.0 changelog date missing" }
+          if ($changelog.Contains("## [0.5.1]")) { throw "phantom 0.5.1 section still exists" }
           git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Commit verified release prep
         shell: pwsh
