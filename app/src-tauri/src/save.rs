@@ -5,9 +5,9 @@
 //! `Vec<pal_data::OwnedPal>` serialized with its default serde derive, so the
 //! JSON shape matches `crates/pal-data/src/types.rs` exactly.
 
+use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::mpsc::{channel, RecvTimeoutError};
-use parking_lot::Mutex;
 use std::time::Duration;
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -252,7 +252,9 @@ mod tests {
         for p in &summary.players {
             assert_eq!(p.uid.len(), 32, "uid not 32 hex chars: {}", p.uid);
             assert!(
-                p.uid.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+                p.uid
+                    .chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
                 "uid not lowercase hex: {}",
                 p.uid
             );
@@ -280,12 +282,8 @@ mod tests {
     fn scratch_dir(tag: &str) -> std::path::PathBuf {
         static N: AtomicUsize = AtomicUsize::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "atlas-watch-{}-{}-{}",
-            tag,
-            std::process::id(),
-            n
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("atlas-watch-{}-{}-{}", tag, std::process::id(), n));
         std::fs::create_dir_all(&dir).expect("create scratch dir");
         dir
     }
@@ -317,7 +315,11 @@ mod tests {
             std::thread::sleep(Duration::from_millis(30));
         }
         std::thread::sleep(Duration::from_millis(900)); // window elapses + fire.
-        assert_eq!(hits.load(Ordering::SeqCst), 1, "burst should coalesce to one");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "burst should coalesce to one"
+        );
 
         // A separate write later fires again.
         touch(&level, "second");
@@ -352,7 +354,11 @@ mod tests {
         // Writes after the drop must not reach A.
         touch(&level, "after-drop");
         std::thread::sleep(Duration::from_millis(700));
-        assert_eq!(a_hits.load(Ordering::SeqCst), 0, "dropped watcher still firing");
+        assert_eq!(
+            a_hits.load(Ordering::SeqCst),
+            0,
+            "dropped watcher still firing"
+        );
 
         // Watcher B over the same dir still works.
         let b_hits = Arc::new(AtomicUsize::new(0));
@@ -364,7 +370,10 @@ mod tests {
         std::thread::sleep(Duration::from_millis(250));
         touch(&level, "for-b");
         std::thread::sleep(Duration::from_millis(700));
-        assert!(b_hits.load(Ordering::SeqCst) >= 1, "replacement watcher never fired");
+        assert!(
+            b_hits.load(Ordering::SeqCst) >= 1,
+            "replacement watcher never fired"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

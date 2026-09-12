@@ -14,8 +14,14 @@ export interface MapStateRefresh {
  * Load save-backed map state, then refresh it on the same cadence the map uses:
  * every 30s while visible, plus focus/visibility wakeups. Periodic failures keep
  * the last good snapshot; only an initial failure surfaces as an error.
+ *
+ * `localDataPath` is an optional per-save client LocalData.sav override. Rust
+ * still auto-discovers LocalData when this is null or unreadable.
  */
-export function useMapStateRefresh(saveDir: string): MapStateRefresh {
+export function useMapStateRefresh(
+  saveDir: string,
+  localDataPath: string | null = null,
+): MapStateRefresh {
   const [mapState, setMapState] = useState<MapState | null>(null);
   const [mapStateLoading, setMapStateLoading] = useState(false);
   const [mapStateError, setMapStateError] = useState<string | null>(null);
@@ -39,7 +45,7 @@ export function useMapStateRefresh(saveDir: string): MapStateRefresh {
     const refresh = () => {
       if (inFlight) return;
       inFlight = true;
-      invoke<MapState>("get_map_state", { saveDir })
+      invoke<MapState>("get_map_state", { saveDir, localDataPath })
         .then((s) => {
           if (!alive) return;
           hasLoaded = true;
@@ -73,7 +79,7 @@ export function useMapStateRefresh(saveDir: string): MapStateRefresh {
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [saveDir]);
+  }, [saveDir, localDataPath]);
 
   return { mapState, mapStateLoading, mapStateError };
 }

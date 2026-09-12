@@ -3,6 +3,12 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.5.1] - Unreleased
+
+### Fixed
+- World Map now combines SFTP dedicated-server Level/Players data with the matching local client `LocalData.sav`, restoring player positions, bases, fog of war, and player-placed custom markers for remote worlds.
+- Added a per-save LocalData override in the Map filter so users can manually select/clear the client map-data file when automatic world-folder matching is ambiguous or unavailable.
+
 ## [0.5.0] - 2026-09-11
 
 ### Added

@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "../../lib/tauri";
 import { useAppState, type MapFocusTarget } from "../../state";
 import { useMapStateRefresh } from "../../lib/use-map-state";
@@ -67,7 +68,41 @@ const SHOW_HIDDEN_KEY = "atlas.mapShowHidden";
 const FOG_ON_KEY = "atlas.mapFogOn";
 const MAP_LAYER_KEY = "atlas.mapLayer";
 const MAP_VIEWS_KEY = "atlas.mapViews";
+const LOCAL_DATA_OVERRIDES_KEY = "atlas.mapLocalDataOverrides";
 const FOCUS_HIGHLIGHT_MS = 6500;
+
+function readLocalDataOverride(saveDir: string): string | null {
+  if (!saveDir) return null;
+  try {
+    const raw = localStorage.getItem(LOCAL_DATA_OVERRIDES_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const value = (parsed as Record<string, unknown>)[saveDir];
+    return typeof value === "string" && value.trim() ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDataOverride(saveDir: string, path: string | null) {
+  if (!saveDir) return;
+  try {
+    const raw = localStorage.getItem(LOCAL_DATA_OVERRIDES_KEY);
+    let next: Record<string, string> = {};
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        next = { ...(parsed as Record<string, string>) };
+      }
+    }
+    if (path) next[saveDir] = path;
+    else delete next[saveDir];
+    localStorage.setItem(LOCAL_DATA_OVERRIDES_KEY, JSON.stringify(next));
+  } catch {
+    // Persistence is best-effort; the active selection still works this run.
+  }
+}
 
 const DEFAULT_FILTERS: LayerFilters = {
   fastTravel: true,
@@ -202,7 +237,13 @@ export default function MapView() {
   const [imgLoading, setImgLoading] = useState(true);
   const [imgError, setImgError] = useState<string | null>(null);
 
-  const { mapState } = useMapStateRefresh(saveDir);
+  const [localDataOverride, setLocalDataOverride] = useState<string | null>(
+    () => readLocalDataOverride(saveDir),
+  );
+  useEffect(() => {
+    setLocalDataOverride(readLocalDataOverride(saveDir));
+  }, [saveDir]);
+  const { mapState } = useMapStateRefresh(saveDir, localDataOverride);
   const [fogMask, setFogMask] = useState<FogMask | null>(null);
   const [fogOn, setFogOn] = useState<boolean>(() => {
     try {
@@ -883,6 +924,28 @@ export default function MapView() {
     setFilters((f) => ({ ...f, [key]: on }));
   }, []);
 
+  const chooseLocalMapData = useCallback(async () => {
+    if (!saveDir) return;
+    try {
+      const picked = await open({
+        multiple: false,
+        directory: false,
+        title: "Choose this world's LocalData.sav",
+        filters: [{ name: "Palworld save data", extensions: ["sav"] }],
+      });
+      if (typeof picked !== "string") return;
+      writeLocalDataOverride(saveDir, picked);
+      setLocalDataOverride(picked);
+    } catch {
+      // Dialog cancellation / unavailable dialog backend is non-fatal.
+    }
+  }, [saveDir]);
+
+  const clearLocalMapData = useCallback(() => {
+    writeLocalDataOverride(saveDir, null);
+    setLocalDataOverride(null);
+  }, [saveDir]);
+
   const applyMapFocus = useCallback(
     (target: MapFocusTarget) => {
       const el = canvasRef.current;
@@ -1032,6 +1095,10 @@ export default function MapView() {
                     fogOn={fogDrawn}
                     showHidden={showHidden}
                     setShowHidden={setShowHidden}
+                    localMapSource={mapState?.local_source ?? null}
+                    localMapOverride={localDataOverride}
+                    onChooseLocalMapData={chooseLocalMapData}
+                    onClearLocalMapData={clearLocalMapData}
                   />
                 </>
               )}
@@ -1059,7 +1126,7 @@ export default function MapView() {
                 title={
                   fogAvailable
                     ? "Toggle fog of war"
-                    : "No local map data found for this world"
+                    : "No local map data found — choose LocalData.sav under Filter → Local map data"
                 }
                 className={`select-none rounded-md border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
                   !fogAvailable
@@ -1073,7 +1140,7 @@ export default function MapView() {
               </button>
               {!fogAvailable && (
                 <span className="font-mono text-[10px] tracking-wider text-ink-faint">
-                  No local map data found for this world
+                  No local map data found
                 </span>
               )}
             </>

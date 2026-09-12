@@ -19,8 +19,8 @@ use pal_data::{ActiveSkill, GameData, LabResearch};
 use pal_solver::solver::{
     diagnose_no_path, resolve_passive, resolve_species, solve_queue_monitored,
     solve_with_catching_monitored, BreedingPlan, BreedingSetup, CakeKind, Catching,
-    GenderReverserConfig, IvModel, ModeResult, NoPathReason, QueueItem, SolveMonitor, SolvePhase,
-    SolveProgress, SolverConfig, SkillFruitConfig, SurgeryConfig, TargetPal, TargetSpec,
+    GenderReverserConfig, IvModel, ModeResult, NoPathReason, QueueItem, SkillFruitConfig,
+    SolveMonitor, SolvePhase, SolveProgress, SolverConfig, SurgeryConfig, TargetPal, TargetSpec,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -175,7 +175,13 @@ struct ProgressEmitter {
 
 impl ProgressEmitter {
     fn new(app: tauri::AppHandle, token: u64, kind: &'static str) -> Self {
-        ProgressEmitter { app, token, kind, start: Instant::now(), last_emit: Mutex::new(None) }
+        ProgressEmitter {
+            app,
+            token,
+            kind,
+            start: Instant::now(),
+            last_emit: Mutex::new(None),
+        }
     }
 
     fn emit(&self, queue_index: Option<u32>, queue_len: Option<u32>, p: SolveProgress) {
@@ -317,9 +323,12 @@ fn build_request(
 fn scope_owned(pals: &[OwnedPal], uid: Option<Guid>) -> Cow<'_, [OwnedPal]> {
     match uid {
         None => Cow::Borrowed(pals),
-        Some(uid) => {
-            Cow::Owned(pals.iter().filter(|p| p.owner_player_uid == Some(uid)).cloned().collect())
-        }
+        Some(uid) => Cow::Owned(
+            pals.iter()
+                .filter(|p| p.owner_player_uid == Some(uid))
+                .cloned()
+                .collect(),
+        ),
     }
 }
 
@@ -345,8 +354,7 @@ fn run_with_progress(
     let gd = GameData::get();
     let (spec, cfg, catching) = build_request(gd, &req)?;
 
-    let save =
-        crate::xbox::load_save_data(save_dir).map_err(|e| format!("reading save: {e}"))?;
+    let save = crate::xbox::load_save_data(save_dir).map_err(|e| format!("reading save: {e}"))?;
 
     let emitter = match (app, req.progress_token) {
         (Some(app), Some(token)) => Some(ProgressEmitter::new(app, token, "single")),
@@ -357,13 +365,19 @@ fn run_with_progress(
             e.emit(None, None, p);
         }
     };
-    let progress: Option<&(dyn Fn(SolveProgress) + Sync)> =
-        emitter.as_ref().map(|_| &cb as &(dyn Fn(SolveProgress) + Sync));
+    let progress: Option<&(dyn Fn(SolveProgress) + Sync)> = emitter
+        .as_ref()
+        .map(|_| &cb as &(dyn Fn(SolveProgress) + Sync));
     let monitor = SolveMonitor::new(progress, cancel.as_deref());
 
     let pool = scope_owned(&save.pals, req.player_uid);
     match solve_with_catching_monitored(gd, &spec, &pool, &cfg, catching, monitor) {
-        Ok(ModeResult { plans, fallback_used, pins_satisfied, truncated }) => {
+        Ok(ModeResult {
+            plans,
+            fallback_used,
+            pins_satisfied,
+            truncated,
+        }) => {
             // Diagnosis is populated only when the search returned nothing. A
             // budget-killed search proves nothing about reachability, so its
             // diagnosis is the honest `SearchBudgetExhausted` rather than
@@ -373,7 +387,9 @@ fn run_with_progress(
             let diagnosis = if !plans.is_empty() {
                 Vec::new()
             } else if truncated {
-                vec![NoPathReason::SearchBudgetExhausted { budget_secs: cfg.search_budget_secs }]
+                vec![NoPathReason::SearchBudgetExhausted {
+                    budget_secs: cfg.search_budget_secs,
+                }]
             } else {
                 diagnose_no_path(gd, &spec, &pool, &cfg)
             };
@@ -471,12 +487,15 @@ fn run_queue_with_progress(
         .iter()
         .map(|req| {
             let (spec, cfg, catching) = build_request(gd, req)?;
-            Ok(QueueItem { spec, cfg, catching })
+            Ok(QueueItem {
+                spec,
+                cfg,
+                catching,
+            })
         })
         .collect::<Result<Vec<_>, String>>()?;
 
-    let save =
-        crate::xbox::load_save_data(save_dir).map_err(|e| format!("reading save: {e}"))?;
+    let save = crate::xbox::load_save_data(save_dir).map_err(|e| format!("reading save: {e}"))?;
 
     let emitter = match (app, token) {
         (Some(app), Some(token)) => Some(ProgressEmitter::new(app, token, "queue")),
@@ -487,15 +506,22 @@ fn run_queue_with_progress(
             e.emit(Some(idx as u32), Some(queue_len), p);
         }
     };
-    let progress: Option<&(dyn Fn(usize, SolveProgress) + Sync)> =
-        emitter.as_ref().map(|_| &cb as &(dyn Fn(usize, SolveProgress) + Sync));
+    let progress: Option<&(dyn Fn(usize, SolveProgress) + Sync)> = emitter
+        .as_ref()
+        .map(|_| &cb as &(dyn Fn(usize, SolveProgress) + Sync));
 
     let pool = scope_owned(&save.pals, scope_uid);
-    let result =
-        match solve_queue_monitored(gd, &pool, &items, stop_on_failure, cancel.as_deref(), progress) {
-            Ok(r) => r,
-            Err(_) => return Err("cancelled".into()),
-        };
+    let result = match solve_queue_monitored(
+        gd,
+        &pool,
+        &items,
+        stop_on_failure,
+        cancel.as_deref(),
+        progress,
+    ) {
+        Ok(r) => r,
+        Err(_) => return Err("cancelled".into()),
+    };
     let items = result
         .items
         .into_iter()
@@ -511,7 +537,10 @@ fn run_queue_with_progress(
             pins_satisfied: item.pins_satisfied,
         })
         .collect();
-    Ok(QueueResponse { items, combined_effort_secs: result.combined_effort_secs })
+    Ok(QueueResponse {
+        items,
+        combined_effort_secs: result.combined_effort_secs,
+    })
 }
 
 /// Solve a queue of targets sequentially, seeding each item's owned pool with
@@ -580,7 +609,10 @@ pub fn get_world_options(save_dir: String) -> Result<WorldOptionsResponse, Strin
 pub fn list_species() -> Vec<NamedEntry> {
     GameData::get()
         .species()
-        .map(|s| NamedEntry { id: s.internal_name.clone(), name: s.name.clone() })
+        .map(|s| NamedEntry {
+            id: s.internal_name.clone(),
+            name: s.name.clone(),
+        })
         .collect()
 }
 
@@ -668,9 +700,7 @@ pub fn list_breeding_boosts() -> Vec<BreedingBoostEntry> {
         .iter()
         .map(|b| {
             let display_name = match b.source_kind {
-                BreedingBoostSource::Passive => {
-                    gd.passive_by_id(&b.source).map(|p| p.name.clone())
-                }
+                BreedingBoostSource::Passive => gd.passive_by_id(&b.source).map(|p| p.name.clone()),
                 BreedingBoostSource::PartnerBase | BreedingBoostSource::PartnerParty => {
                     gd.species_by_id(&b.source).map(|s| s.name.clone())
                 }
@@ -726,11 +756,13 @@ mod tests {
     // `skill_fruit`; serde defaults must keep them deserializing (empty / off).
     #[test]
     fn old_payload_defaults_move_fields() {
-        let req: SolveRequest = serde_json::from_str(
-            r#"{"target_species":"Anubis","required_passives":["Runner"]}"#,
-        )
-        .expect("legacy payload must still deserialize");
-        assert!(req.required_moves.is_empty(), "required_moves defaults empty");
+        let req: SolveRequest =
+            serde_json::from_str(r#"{"target_species":"Anubis","required_passives":["Runner"]}"#)
+                .expect("legacy payload must still deserialize");
+        assert!(
+            req.required_moves.is_empty(),
+            "required_moves defaults empty"
+        );
         assert!(req.skill_fruit.is_none(), "skill_fruit defaults off");
     }
 
@@ -777,8 +809,7 @@ mod tests {
     fn breeding_only_prefers_owned_over_catch() {
         use pal_solver::solver::PlanSource;
         fn has_wild(node: &pal_solver::solver::PlanNode) -> bool {
-            matches!(node.source, PlanSource::Wild { .. })
-                || node.children.iter().any(has_wild)
+            matches!(node.source, PlanSource::Wild { .. }) || node.children.iter().any(has_wild)
         }
         let req = SolveRequest {
             target_species: "Anubis".into(),
@@ -800,13 +831,19 @@ mod tests {
             skill_fruit: None,
         };
         let resp = run(&testdata_dir(), req).expect("solve should succeed");
-        assert!(!resp.plans.is_empty(), "expected an owned-breeding plan for Anubis");
+        assert!(
+            !resp.plans.is_empty(),
+            "expected an owned-breeding plan for Anubis"
+        );
         assert!(
             !resp.fallback_used,
             "Anubis is owned-breedable — breeding_only must not fall back to catching"
         );
         for p in &resp.plans {
-            assert!(!has_wild(&p.root), "breeding_only owned-reachable plan has no wild nodes");
+            assert!(
+                !has_wild(&p.root),
+                "breeding_only owned-reachable plan has no wild nodes"
+            );
         }
     }
 
@@ -823,7 +860,11 @@ mod tests {
             include_wild: None,
             max_irrelevant: None,
             catching: Catching::default(),
-            ivs: Some(IvThresholds { hp: 3, attack: 3, defense: 0 }),
+            ivs: Some(IvThresholds {
+                hp: 3,
+                attack: 3,
+                defense: 0,
+            }),
             cake: Some("mushroom".into()),
             iv_model: Some(IvModel::Empirical),
             setup: Some(BreedingSetup {
@@ -841,7 +882,10 @@ mod tests {
             skill_fruit: None,
         };
         let resp = run(&testdata_dir(), req).expect("solve with ivs+cake should succeed");
-        assert!(!resp.plans.is_empty(), "expected a plan with modest IVs + mushroom cake");
+        assert!(
+            !resp.plans.is_empty(),
+            "expected a plan with modest IVs + mushroom cake"
+        );
         eprintln!(
             "ivs+cake solve: {} plan(s); best {} steps, {:.0}s",
             resp.plans.len(),
@@ -854,12 +898,14 @@ mod tests {
     /// hatch time) and returns `null` for a save without one.
     #[test]
     fn get_world_options_reads_and_defaults() {
-        let wo_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../testdata/worldoption");
+        let wo_dir =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/worldoption");
         if wo_dir.join("WorldOption.sav").is_file() {
             let resp = get_world_options(wo_dir.to_string_lossy().into_owned())
                 .expect("world options parse");
-            let hours = resp.egg_hatch_hours.expect("fixture carries egg hatch hours");
+            let hours = resp
+                .egg_hatch_hours
+                .expect("fixture carries egg hatch hours");
             assert!(hours > 0.0 && hours <= 240.0, "plausible hours: {hours}");
             eprintln!("get_world_options scanned egg_hatch_hours = {hours}");
         }
@@ -900,9 +946,15 @@ mod tests {
             .expect("queue solve should succeed");
         assert_eq!(resp.items.len(), 2, "both items returned");
         assert_eq!(resp.items[0].target_species, "Anubis");
-        assert!(resp.items.iter().all(|i| i.pins_satisfied), "no pins -> all satisfied");
-        let expected: f64 =
-            resp.items.iter().map(|i| i.plans.first().map_or(0.0, |p| p.total_time_secs)).sum();
+        assert!(
+            resp.items.iter().all(|i| i.pins_satisfied),
+            "no pins -> all satisfied"
+        );
+        let expected: f64 = resp
+            .items
+            .iter()
+            .map(|i| i.plans.first().map_or(0.0, |p| p.total_time_secs))
+            .sum();
         assert!(
             (resp.combined_effort_secs - expected).abs() < 1e-6,
             "combined must sum each item's best-plan effort"
@@ -931,7 +983,10 @@ mod tests {
         assert_eq!(find("NaughtyCat").display_name, "Grintale");
         // Passives resolve to the pack's clean names, prefix already stripped.
         assert_eq!(find("MutationPal_Babysitter").display_name, "Babysitter");
-        assert_eq!(find("Test_PalEgg_HatchingSpeed_Up").display_name, "Philanthropist");
+        assert_eq!(
+            find("Test_PalEgg_HatchingSpeed_Up").display_name,
+            "Philanthropist"
+        );
     }
 
     /// `scope_owned` restricts the pool to one player's pals, dropping the other
@@ -965,13 +1020,19 @@ mod tests {
         // Unscoped: whole pool, borrowed (no clone).
         let all = scope_owned(&pals, None);
         assert_eq!(all.len(), 4);
-        assert!(matches!(all, Cow::Borrowed(_)), "None uid must borrow the pool");
+        assert!(
+            matches!(all, Cow::Borrowed(_)),
+            "None uid must borrow the pool"
+        );
 
         // Scoped to A: only A's two pals; B and the null-owner pal are excluded.
         let scoped = scope_owned(&pals, Some(uid_a));
         assert_eq!(scoped.len(), 2);
         assert!(scoped.iter().all(|p| p.owner_player_uid == Some(uid_a)));
-        assert!(matches!(scoped, Cow::Owned(_)), "Some uid must own a filtered vec");
+        assert!(
+            matches!(scoped, Cow::Owned(_)),
+            "Some uid must own a filtered vec"
+        );
 
         // A uid nobody owns => empty pool.
         assert!(scope_owned(&pals, Some([9u8; 16])).is_empty());
