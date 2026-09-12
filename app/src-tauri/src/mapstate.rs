@@ -113,12 +113,12 @@ fn get_folder_map_state(
     local_data_path: Option<&str>,
 ) -> Result<MapState, String> {
     let level_blob = decompress(&dir.join("Level.sav")).ok();
-    let nicknames = nicknames_from_level(level_blob.as_deref());
+    let (nicknames, guild_markers) = level_context(level_blob.as_deref());
     let players = read_players(dir, &nicknames);
     let bases = bases_from_level(level_blob.as_deref());
 
     let (local, local_source) = discover_local_data(save_source, local_data_path);
-    Ok(assemble(local, local_source, players, bases))
+    Ok(assemble(local, local_source, guild_markers, players, bases))
 }
 
 fn get_sftp_map_state(
@@ -127,7 +127,7 @@ fn get_sftp_map_state(
 ) -> Result<MapState, String> {
     let bundle = crate::sftp::load_map_bundle(save_source)?;
     let level_blob = decompress_bytes(&bundle.level).ok();
-    let nicknames = nicknames_from_level(level_blob.as_deref());
+    let (nicknames, guild_markers) = level_context(level_blob.as_deref());
     let players = read_players_from_parts(&bundle.players, &nicknames);
     let bases = bases_from_level(level_blob.as_deref());
 
@@ -135,39 +135,61 @@ fn get_sftp_map_state(
     // it on the ATLAS machine using the remote world's folder id, with the
     // explicit per-save override taking precedence.
     let (local, local_source) = discover_local_data(save_source, local_data_path);
-    Ok(assemble(local, local_source, players, bases))
+    Ok(assemble(local, local_source, guild_markers, players, bases))
 }
 
 fn assemble(
     local: Option<LocalData>,
     local_source: Option<String>,
+    guild_markers: Vec<CustomMarker>,
     players: Vec<MapPlayerState>,
     bases: Option<Vec<BaseDto>>,
 ) -> MapState {
-    let (fog, markers) = match local {
-        Some(ld) => (Some(build_fog(ld.layers)), build_markers(ld.markers)),
+    let (fog, mut markers) = match local {
+        Some(ld) => (Some(build_fog(ld.layers)), ld.markers),
         None => (None, Vec::new()),
     };
-
+    for marker in guild_markers {
+        if !markers
+            .iter()
+            .any(|m| m.x == marker.x && m.y == marker.y && m.icon_type == marker.icon_type)
+        {
+            markers.push(marker);
+        }
+    }
     MapState {
         fog,
         local_source,
-        markers,
+        markers: build_markers(markers),
         players,
         bases,
     }
 }
 
-fn nicknames_from_level(level_blob: Option<&[u8]>) -> HashMap<String, String> {
-    level_blob
-        .and_then(|b| pal_save::read_level_sav_from_blob(b).ok())
-        .map(|s| {
-            s.players
-                .iter()
-                .map(|p| (guid_str(&p.uid), p.name.clone()))
-                .collect()
+fn level_context(level_blob: Option<&[u8]>) -> (HashMap<String, String>, Vec<CustomMarker>) {
+    let Some(blob) = level_blob else {
+        return (HashMap::new(), Vec::new());
+    };
+    let mut warnings = Vec::new();
+    let Ok(parsed) = pal_save::characters::parse_level(blob, &mut warnings) else {
+        return (HashMap::new(), Vec::new());
+    };
+    let nicknames = parsed
+        .players
+        .iter()
+        .map(|p| (guid_str(&p.uid), p.name.clone()))
+        .collect();
+    let markers = parsed
+        .guilds
+        .into_iter()
+        .flat_map(|g| g.markers)
+        .map(|m| CustomMarker {
+            x: m.x,
+            y: m.y,
+            icon_type: m.icon_type,
         })
-        .unwrap_or_default()
+        .collect();
+    (nicknames, markers)
 }
 
 fn bases_from_level(level_blob: Option<&[u8]>) -> Option<Vec<BaseDto>> {

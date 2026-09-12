@@ -41,12 +41,23 @@ pub struct LevelParse {
 /// `GroupSaveDataMap`. `member_candidates` are the distinct non-zero guids
 /// found in the player-list region of the raw record; the caller intersects
 /// them with the known player uids to get true members.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuildMarkerRaw {
+    pub marker_id: Guid,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub icon_type: i32,
+    pub owner_player_uid: Guid,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct GuildRaw {
     pub guild_id: Guid,
     pub guild_name: String,
     pub base_ids: Vec<Guid>,
     pub member_candidates: Vec<Guid>,
+    pub markers: Vec<GuildMarkerRaw>,
 }
 
 /// Container ids extracted from a single player save, used to classify where a
@@ -422,22 +433,21 @@ fn decode_guild(bytes: &[u8]) -> Option<GuildRaw> {
     let _group_name = br.fstring().ok()?;
     let handle_count = br.u32().ok()?;
     br.skip(handle_count as usize * 32).ok()?;
-    let _unknown = br.u32().ok()?;
     let _org_type = br.u8().ok()?;
+    br.skip(4).ok()?;
     let base_count = br.u32().ok()?;
     let mut base_ids = Vec::with_capacity(base_count as usize);
     for _ in 0..base_count {
         base_ids.push(br.guid().ok()?);
     }
-    let _unknown2 = br.u32().ok()?;
+    let _unknown1 = br.i32().ok()?;
     let _base_camp_level = br.i32().ok()?;
     let point_count = br.u32().ok()?;
     br.skip(point_count as usize * 16).ok()?;
     let guild_name = br.fstring().ok().unwrap_or_default();
-
-    // Scan the trailing player-list region (admin uid + members) for distinct
-    // non-zero guids. The caller keeps only those that are known player uids.
     let rest = &bytes[br.pos().min(bytes.len())..];
+    let markers = decode_guild_markers(rest).unwrap_or_default();
+
     let mut member_candidates = Vec::new();
     let mut i = 0;
     while i + 16 <= rest.len() {
@@ -447,13 +457,51 @@ fn decode_guild(bytes: &[u8]) -> Option<GuildRaw> {
         }
         i += 1;
     }
-
     Some(GuildRaw {
         guild_id,
         guild_name,
         base_ids,
         member_candidates,
+        markers,
     })
+}
+
+fn decode_guild_markers(rest: &[u8]) -> Option<Vec<GuildMarkerRaw>> {
+    const MARKER_BYTES: usize = 60;
+    const MAX_MARKERS: usize = 1024;
+    const WORLD_LIMIT: f64 = 2_000_000.0;
+    let mut r = Reader::new(rest);
+    let _last_guild_name_modifier_player_uid = r.guid().ok()?;
+    let count = r.u32().ok()? as usize;
+    if count > MAX_MARKERS || count.checked_mul(MARKER_BYTES)? > r.remaining() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        let marker_id = r.guid().ok()?;
+        let x = r.f64().ok()?;
+        let y = r.f64().ok()?;
+        let z = r.f64().ok()?;
+        let icon_type = r.i32().ok()?;
+        let owner_player_uid = r.guid().ok()?;
+        if !x.is_finite()
+            || !y.is_finite()
+            || !z.is_finite()
+            || x.abs() >= WORLD_LIMIT
+            || y.abs() >= WORLD_LIMIT
+        {
+            return None;
+        }
+        out.push(GuildMarkerRaw {
+            marker_id,
+            x,
+            y,
+            z,
+            icon_type,
+            owner_player_uid,
+        });
+    }
+    Some(out)
 }
 
 fn talent(param: &[(String, Value)], name: &str) -> u8 {
@@ -916,5 +964,45 @@ mod tests {
             paldeck_unlocked(&props),
             vec!["GhostAnglerfish".to_string(), "PinkCat".to_string()]
         );
+    }
+
+    #[test]
+    fn palworld_1_0_guild_markers_decode_from_group_tail() {
+        fn fs(out: &mut Vec<u8>, v: &str) {
+            out.extend_from_slice(&((v.len() + 1) as i32).to_le_bytes());
+            out.extend_from_slice(v.as_bytes());
+            out.push(0);
+        }
+        let gid: Guid = [1; 16];
+        let mid: Guid = [3; 16];
+        let owner: Guid = [7; 16];
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&gid);
+        fs(&mut raw, "group");
+        raw.extend_from_slice(&0u32.to_le_bytes());
+        raw.push(0);
+        raw.extend_from_slice(&[0; 4]);
+        raw.extend_from_slice(&0u32.to_le_bytes());
+        raw.extend_from_slice(&0i32.to_le_bytes());
+        raw.extend_from_slice(&20i32.to_le_bytes());
+        raw.extend_from_slice(&0u32.to_le_bytes());
+        fs(&mut raw, "Smitty Guild");
+        raw.extend_from_slice(&[5; 16]);
+        raw.extend_from_slice(&1u32.to_le_bytes());
+        raw.extend_from_slice(&mid);
+        raw.extend_from_slice(&1234.5f64.to_le_bytes());
+        raw.extend_from_slice(&(-6789.25f64).to_le_bytes());
+        raw.extend_from_slice(&42f64.to_le_bytes());
+        raw.extend_from_slice(&3i32.to_le_bytes());
+        raw.extend_from_slice(&owner);
+        let g = decode_guild(&raw).expect("guild");
+        assert_eq!(g.guild_id, gid);
+        assert_eq!(g.guild_name, "Smitty Guild");
+        assert_eq!(g.markers.len(), 1);
+        assert_eq!(g.markers[0].marker_id, mid);
+        assert_eq!(g.markers[0].x, 1234.5);
+        assert_eq!(g.markers[0].y, -6789.25);
+        assert_eq!(g.markers[0].icon_type, 3);
+        assert_eq!(g.markers[0].owner_player_uid, owner);
     }
 }

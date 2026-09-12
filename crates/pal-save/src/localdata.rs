@@ -170,8 +170,6 @@ fn scan_custom_markers(blob: &[u8]) -> Vec<CustomMarker> {
     const ARRAY_NAME: &[u8] = b"Local_CustomMarkerSaveData";
     const LOCATION_NAME: &[u8] = b"IconLocation";
     const VECTOR_NAME: &[u8] = b"Vector";
-    const ICON_TYPE_NAME: &[u8] = b"IconType";
-    const INT_PROPERTY: &[u8] = b"IntProperty";
     const WORLD_LIMIT: f64 = 2_000_000.0;
 
     let Some(array_start) = find_bytes(blob, ARRAY_NAME, 0) else {
