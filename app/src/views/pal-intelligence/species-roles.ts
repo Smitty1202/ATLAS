@@ -104,6 +104,20 @@ function isWorkSustainabilityPassive(row: PassiveEntry): boolean {
   return row.rank > 0 && row.effects.some((effect) => WORK_SUSTAINABILITY_EFFECTS.has(effect.type));
 }
 
+export function combatPassiveRows(
+  pal: OwnedPal,
+  passiveRows: ReadonlyMap<string, PassiveEntry>,
+): PassiveEntry[] {
+  return relevantRows(pal, passiveRows, isCombatPassive);
+}
+
+export function workProductivityPassiveRows(
+  pal: OwnedPal,
+  passiveRows: ReadonlyMap<string, PassiveEntry>,
+): PassiveEntry[] {
+  return relevantRows(pal, passiveRows, isWorkProductivityPassive);
+}
+
 function relevantRows(
   pal: OwnedPal,
   passiveRows: ReadonlyMap<string, PassiveEntry>,
