@@ -1,0 +1,223 @@
+name: Guild marker verification 2
+
+on:
+  push:
+    branches: [fix/sftp-local-map-data]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/sftp-local-map-data
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Apply guild marker implementation
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          p = Path('crates/pal-save/src/characters.rs')
+          s = p.read_text(encoding='utf-8')
+          old = '''#[derive(Debug, Clone, Default)]
+          pub struct GuildRaw {
+              pub guild_id: Guid,
+              pub guild_name: String,
+              pub base_ids: Vec<Guid>,
+              pub member_candidates: Vec<Guid>,
+          }
+          '''
+          new = '''#[derive(Debug, Clone, PartialEq)]
+          pub struct GuildMarkerRaw {
+              pub marker_id: Guid,
+              pub x: f64,
+              pub y: f64,
+              pub z: f64,
+              pub icon_type: i32,
+              pub owner_player_uid: Guid,
+          }
+
+          #[derive(Debug, Clone, Default)]
+          pub struct GuildRaw {
+              pub guild_id: Guid,
+              pub guild_name: String,
+              pub base_ids: Vec<Guid>,
+              pub member_candidates: Vec<Guid>,
+              pub markers: Vec<GuildMarkerRaw>,
+          }
+          '''
+          if old not in s: raise SystemExit('GuildRaw anchor missing')
+          s = s.replace(old, new, 1)
+
+          a = s.index('fn decode_guild(bytes: &[u8]) -> Option<GuildRaw> {')
+          b = s.index('\nfn talent(', a)
+          fn = r'''fn decode_guild(bytes: &[u8]) -> Option<GuildRaw> {
+              let mut br = Reader::new(bytes);
+              let guild_id = br.guid().ok()?;
+              let _group_name = br.fstring().ok()?;
+              let handle_count = br.u32().ok()?;
+              br.skip(handle_count as usize * 32).ok()?;
+              let _org_type = br.u8().ok()?;
+              br.skip(4).ok()?;
+              let base_count = br.u32().ok()?;
+              let mut base_ids = Vec::with_capacity(base_count as usize);
+              for _ in 0..base_count { base_ids.push(br.guid().ok()?); }
+              let _unknown1 = br.i32().ok()?;
+              let _base_camp_level = br.i32().ok()?;
+              let point_count = br.u32().ok()?;
+              br.skip(point_count as usize * 16).ok()?;
+              let guild_name = br.fstring().ok().unwrap_or_default();
+              let rest = &bytes[br.pos().min(bytes.len())..];
+              let markers = decode_guild_markers(rest).unwrap_or_default();
+
+              let mut member_candidates = Vec::new();
+              let mut i = 0;
+              while i + 16 <= rest.len() {
+                  let w: Guid = rest[i..i + 16].try_into().ok()?;
+                  if w != Guid::default() && !member_candidates.contains(&w) {
+                      member_candidates.push(w);
+                  }
+                  i += 1;
+              }
+              Some(GuildRaw { guild_id, guild_name, base_ids, member_candidates, markers })
+          }
+
+          fn decode_guild_markers(rest: &[u8]) -> Option<Vec<GuildMarkerRaw>> {
+              const MARKER_BYTES: usize = 60;
+              const MAX_MARKERS: usize = 1024;
+              const WORLD_LIMIT: f64 = 2_000_000.0;
+              let mut r = Reader::new(rest);
+              let _last_guild_name_modifier_player_uid = r.guid().ok()?;
+              let count = r.u32().ok()? as usize;
+              if count > MAX_MARKERS || count.checked_mul(MARKER_BYTES)? > r.remaining() { return None; }
+              let mut out = Vec::with_capacity(count);
+              for _ in 0..count {
+                  let marker_id = r.guid().ok()?;
+                  let x = r.f64().ok()?;
+                  let y = r.f64().ok()?;
+                  let z = r.f64().ok()?;
+                  let icon_type = r.i32().ok()?;
+                  let owner_player_uid = r.guid().ok()?;
+                  if !x.is_finite() || !y.is_finite() || !z.is_finite()
+                      || x.abs() >= WORLD_LIMIT || y.abs() >= WORLD_LIMIT { return None; }
+                  out.push(GuildMarkerRaw { marker_id, x, y, z, icon_type, owner_player_uid });
+              }
+              Some(out)
+          }
+          '''
+          s = s[:a] + fn + s[b:]
+
+          test = r'''
+
+              #[test]
+              fn palworld_1_0_guild_markers_decode_from_group_tail() {
+                  fn fs(out: &mut Vec<u8>, v: &str) {
+                      out.extend_from_slice(&((v.len()+1) as i32).to_le_bytes());
+                      out.extend_from_slice(v.as_bytes()); out.push(0);
+                  }
+                  let gid: Guid=[1;16]; let mid: Guid=[3;16]; let owner: Guid=[7;16];
+                  let mut raw=Vec::new(); raw.extend_from_slice(&gid); fs(&mut raw,"group");
+                  raw.extend_from_slice(&0u32.to_le_bytes()); raw.push(0); raw.extend_from_slice(&[0;4]);
+                  raw.extend_from_slice(&0u32.to_le_bytes()); raw.extend_from_slice(&0i32.to_le_bytes());
+                  raw.extend_from_slice(&20i32.to_le_bytes()); raw.extend_from_slice(&0u32.to_le_bytes());
+                  fs(&mut raw,"Smitty Guild"); raw.extend_from_slice(&[5;16]); raw.extend_from_slice(&1u32.to_le_bytes());
+                  raw.extend_from_slice(&mid); raw.extend_from_slice(&1234.5f64.to_le_bytes());
+                  raw.extend_from_slice(&(-6789.25f64).to_le_bytes()); raw.extend_from_slice(&42f64.to_le_bytes());
+                  raw.extend_from_slice(&3i32.to_le_bytes()); raw.extend_from_slice(&owner);
+                  let g=decode_guild(&raw).expect("guild");
+                  assert_eq!(g.guild_id,gid); assert_eq!(g.guild_name,"Smitty Guild"); assert_eq!(g.markers.len(),1);
+                  assert_eq!(g.markers[0].marker_id,mid); assert_eq!(g.markers[0].x,1234.5);
+                  assert_eq!(g.markers[0].y,-6789.25); assert_eq!(g.markers[0].icon_type,3);
+                  assert_eq!(g.markers[0].owner_player_uid,owner);
+              }
+          '''
+          i=s.rfind('\n}')
+          s=s[:i]+test+s[i:]
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('app/src-tauri/src/mapstate.rs'); s=p.read_text(encoding='utf-8')
+          s=s.replace('let nicknames = nicknames_from_level(level_blob.as_deref());', 'let (nicknames, guild_markers) = level_context(level_blob.as_deref());', 2)
+          s=s.replace('Ok(assemble(local, local_source, players, bases))', 'Ok(assemble(local, local_source, guild_markers, players, bases))', 2)
+          a=s.index('fn assemble('); b=s.index('\nfn bases_from_level',a)
+          block=r'''fn assemble(
+              local: Option<LocalData>,
+              local_source: Option<String>,
+              guild_markers: Vec<CustomMarker>,
+              players: Vec<MapPlayerState>,
+              bases: Option<Vec<BaseDto>>,
+          ) -> MapState {
+              let (fog, mut markers) = match local {
+                  Some(ld) => (Some(build_fog(ld.layers)), ld.markers),
+                  None => (None, Vec::new()),
+              };
+              for marker in guild_markers {
+                  if !markers.iter().any(|m| m.x == marker.x && m.y == marker.y && m.icon_type == marker.icon_type) {
+                      markers.push(marker);
+                  }
+              }
+              MapState { fog, local_source, markers: build_markers(markers), players, bases }
+          }
+
+          fn level_context(level_blob: Option<&[u8]>) -> (HashMap<String, String>, Vec<CustomMarker>) {
+              let Some(blob) = level_blob else { return (HashMap::new(), Vec::new()); };
+              let mut warnings=Vec::new();
+              let Ok(parsed)=pal_save::characters::parse_level(blob,&mut warnings) else { return (HashMap::new(),Vec::new()); };
+              let nicknames=parsed.players.iter().map(|p|(guid_str(&p.uid),p.name.clone())).collect();
+              let markers=parsed.guilds.into_iter().flat_map(|g|g.markers).map(|m|CustomMarker{x:m.x,y:m.y,icon_type:m.icon_type}).collect();
+              (nicknames,markers)
+          }
+          '''
+          s=s[:a]+block+s[b:]; p.write_text(s,encoding='utf-8')
+
+          p=Path('crates/pal-save/src/localdata.rs'); s=p.read_text(encoding='utf-8')
+          s=s.replace('    const ICON_TYPE_NAME: &[u8] = b"IconType";\n    const INT_PROPERTY: &[u8] = b"IntProperty";\n','',1)
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('CHANGELOG.md'); s=p.read_text(encoding='utf-8')
+          s=s.replace('- World Map now combines SFTP dedicated-server Level/Players data with the matching local client `LocalData.sav`, restoring player positions, bases, fog of war, and player-placed custom markers for remote worlds.\n', '- World Map now combines SFTP dedicated-server Level/Players data with the matching local client `LocalData.sav`, restoring player positions, bases, and fog of war for remote worlds.\n- Added Palworld 1.0 guild-marker decoding from `Level.sav` `GroupSaveDataMap`, so shared guild markers render for local and dedicated-server worlds while legacy LocalData pins remain supported.\n',1)
+          p.write_text(s,encoding='utf-8')
+          '@ | python -
+
+      - name: Format
+        shell: pwsh
+        run: rustfmt --edition 2021 crates/pal-save/src/characters.rs crates/pal-save/src/localdata.rs app/src-tauri/src/mapstate.rs
+      - name: Guild marker regression
+        shell: pwsh
+        run: cargo test --manifest-path crates/pal-save/Cargo.toml palworld_1_0_guild_markers_decode_from_group_tail -- --nocapture
+      - name: Legacy marker scanner regression
+        shell: pwsh
+        run: cargo test --manifest-path crates/pal-save/Cargo.toml targeted_custom_marker_scan_recovers_vector_and_icon_type -- --nocapture
+      - name: Desktop check
+        shell: pwsh
+        run: cargo check --manifest-path app/src-tauri/Cargo.toml
+      - name: Desktop test compile
+        shell: pwsh
+        run: cargo test --no-run --manifest-path app/src-tauri/Cargo.toml
+      - name: Frontend dependencies
+        working-directory: app
+        shell: pwsh
+        run: bun install --frozen-lockfile
+      - name: Frontend build
+        working-directory: app
+        shell: pwsh
+        run: bun run build
+      - name: Commit verified fix
+        shell: pwsh
+        run: |
+          git rm .github/workflows/guild-marker-verify2.yml
+          if (Test-Path crates/pal-save/src/bin/inspect-localdata.rs) { git rm crates/pal-save/src/bin/inspect-localdata.rs }
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md app/src-tauri/src/mapstate.rs crates/pal-save/src/characters.rs crates/pal-save/src/localdata.rs
+          git commit -m "Read Palworld 1.0 guild markers from Level.sav"
+          git push origin HEAD:fix/sftp-local-map-data
