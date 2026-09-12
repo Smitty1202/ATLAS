@@ -1,5 +1,7 @@
 import { isAlpha, type OwnedPal, type PassiveEntry } from "../../lib/types";
 
+export type IntelligenceRole = "combat" | "worker";
+
 export interface SpeciesRolePick {
   pal: OwnedPal;
   reasons: string[];
@@ -327,6 +329,21 @@ function breedingPick(
     reasons.push(`Only owned ${best.pal.gender?.toLowerCase() ?? "ungendered"} copy.`);
   }
   return { pal: best.pal, reasons };
+}
+
+export function roleTargetPassiveNames(
+  role: IntelligenceRole,
+  pal: OwnedPal,
+  passiveRows: ReadonlyMap<string, PassiveEntry>,
+): string[] {
+  const rows =
+    role === "combat"
+      ? relevantRows(pal, passiveRows, isCombatPassive)
+      : [
+          ...relevantRows(pal, passiveRows, isWorkProductivityPassive),
+          ...relevantRows(pal, passiveRows, isWorkSustainabilityPassive),
+        ];
+  return [...new Set(rows.map((row) => row.name))];
 }
 
 export function buildSpeciesRoleSummary(

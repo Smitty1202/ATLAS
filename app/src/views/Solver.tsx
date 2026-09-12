@@ -60,6 +60,7 @@ import { loadActiveSkills, type ActiveSkills } from "../lib/active-skills";
 import { classifyMoveWarnings } from "../lib/move-warnings";
 import { invoke } from "../lib/tauri";
 import type { SpeciesDetail } from "../lib/types";
+import type { SolverHandoff } from "../lib/tool-handoff";
 
 /** Catch policy for a solve; mirrors the contract's SolveRequest["catching"]. */
 type CatchingMode = NonNullable<SolveRequest["catching"]>;
@@ -776,6 +777,8 @@ export default function Solver() {
     saveSummary,
     solveTarget,
     clearSolveTarget,
+    toolHandoff,
+    clearToolHandoff,
     requestDex,
     playerScope,
     solveSession,
@@ -796,6 +799,7 @@ export default function Solver() {
   const [extraPref, setExtraPref] = useState<ExtraPassivesPref>(readExtraPassives);
   const [queue, setQueue] = useState<QueueEntry[]>(readQueue);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [handoffNote, setHandoffNote] = useState<SolverHandoff | null>(null);
 
   const {
     speciesList,
@@ -877,6 +881,20 @@ export default function Solver() {
       clearSolveTarget();
     }
   }, [solveTarget, clearSolveTarget]);
+
+  // Pal Intelligence handoff: replace the briefing with only the visible,
+  // defensible constraints the user explicitly chose, and clear stale results.
+  useEffect(() => {
+    if (toolHandoff?.destination !== "solver") return;
+    setSpecies(toolHandoff.subject.speciesName);
+    setPassives(toolHandoff.requiredPassives);
+    setMoves([]);
+    setPins([]);
+    reset();
+    setSolveSession(null);
+    setHandoffNote(toolHandoff);
+    clearToolHandoff();
+  }, [toolHandoff, clearToolHandoff, reset, setSolveSession]);
 
   // Consume a one-shot queue seed (Pal-dex "Breed missing"): replace the
   // breeding queue with the seeded specs and solve it immediately. The specs
@@ -1007,6 +1025,7 @@ export default function Solver() {
     setMaxSteps(5);
     setIncludeWild(false);
     setCatching("breeding_only");
+    setHandoffNote(null);
     closeNaming();
     reset();
     setSolveSession(null);
@@ -1067,6 +1086,7 @@ export default function Solver() {
     sessionRestored.current = true;
     if (
       solveTarget === null &&
+      (toolHandoff === null || toolHandoff.destination !== "solver") &&
       pendingPlanCode === null &&
       solveSession &&
       solveSession.saveDir === saveDir &&
@@ -1171,6 +1191,27 @@ export default function Solver() {
             </button>
           </div>
         </div>
+
+        {handoffNote && (
+          <div className="rounded-md border border-amber/30 bg-amber/5 px-3 py-2.5">
+            <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber">
+              From Pal Intelligence
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-dim">
+              {handoffNote.reason}
+            </p>
+            {handoffNote.subject.instanceLabel && (
+              <div className="mt-1 font-mono text-[10px] text-ink-faint">
+                Context: {handoffNote.subject.instanceLabel}
+              </div>
+            )}
+            <div className="mt-1 font-mono text-[10px] text-ink-faint">
+              {handoffNote.requiredPassives.length > 0
+                ? `Target passives: ${handoffNote.requiredPassives.join(", ")}`
+                : "Species prefilled; no passive target was inferred."}
+            </div>
+          </div>
+        )}
 
         <label className="flex flex-col gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">

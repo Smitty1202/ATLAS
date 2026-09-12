@@ -32,6 +32,7 @@ import {
   type SolveHistoryEntry,
 } from "../components/history-drawer";
 import { NoPathPanel } from "../components/no-path-panel";
+import type { IvLabHandoff } from "../lib/tool-handoff";
 
 const STAT_KEYS: readonly StatKey[] = ["hp", "attack", "defense"];
 const STAT_LABEL: Record<StatKey, string> = {
@@ -185,8 +186,16 @@ function DonorRow({
 }
 
 export default function IvLab() {
-  const { saveDir, saveSummary, requestDex, playerScope, ivLabSession, setIvLabSession } =
-    useAppState();
+  const {
+    saveDir,
+    saveSummary,
+    requestDex,
+    playerScope,
+    ivLabSession,
+    setIvLabSession,
+    toolHandoff,
+    clearToolHandoff,
+  } = useAppState();
   const { setup, cake, setCake } = useBreedingSetup();
 
   const [species, setSpecies] = useState("");
@@ -196,6 +205,7 @@ export default function IvLab() {
   const [ivModel, setIvModel] = useState<IvModel>("empirical");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [handoffNote, setHandoffNote] = useState<IvLabHandoff | null>(null);
 
   const {
     speciesList,
@@ -221,6 +231,19 @@ export default function IvLab() {
     restoreSession,
     reset,
   } = useSolve();
+
+  // Pal Intelligence handoff: species/context is prefilled immediately,
+  // while suggested IV floors remain opt-in via the visible action below.
+  useEffect(() => {
+    if (toolHandoff?.destination !== "ivlab") return;
+    setSpecies(toolHandoff.subject.speciesName);
+    setIvs({ hp: 0, attack: 0, defense: 0 });
+    setPassives([]);
+    reset();
+    setIvLabSession(null);
+    setHandoffNote(toolHandoff);
+    clearToolHandoff();
+  }, [toolHandoff, clearToolHandoff, reset, setIvLabSession]);
 
   const idToName = useMemo(
     () => new Map(speciesList.map((s) => [s.id, s.name])),
@@ -308,6 +331,7 @@ export default function IvLab() {
     setIvs({ hp: 0, attack: 0, defense: 0 });
     setPassives([]);
     setMaxSteps(5);
+    setHandoffNote(null);
     closeNaming();
     reset();
     setIvLabSession(null);
@@ -355,6 +379,7 @@ export default function IvLab() {
     if (sessionRestored.current) return;
     sessionRestored.current = true;
     if (
+      (toolHandoff === null || toolHandoff.destination !== "ivlab") &&
       ivLabSession &&
       ivLabSession.saveDir === saveDir &&
       !plans &&
@@ -414,6 +439,36 @@ export default function IvLab() {
             </button>
           </div>
         </div>
+
+        {handoffNote && (
+          <div className="rounded-md border border-amber/30 bg-amber/5 px-3 py-2.5">
+            <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber">
+              From Pal Intelligence
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-dim">
+              {handoffNote.reason}
+            </p>
+            {handoffNote.subject.instanceLabel && (
+              <div className="mt-1 font-mono text-[10px] text-ink-faint">
+                Owned instance: {handoffNote.subject.instanceLabel}
+              </div>
+            )}
+            {handoffNote.suggestedIvs && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] text-ink-faint">
+                  Suggested species-best floors: HP {handoffNote.suggestedIvs.hp} · ATK {handoffNote.suggestedIvs.attack} · DEF {handoffNote.suggestedIvs.defense}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIvs(handoffNote.suggestedIvs!)}
+                  className="shrink-0 rounded border border-amber/35 bg-amber/10 px-2 py-1 text-[10px] font-medium text-amber transition-colors hover:bg-amber/15"
+                >
+                  Use floors
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <label className="flex flex-col gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
