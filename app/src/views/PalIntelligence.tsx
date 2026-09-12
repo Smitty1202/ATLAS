@@ -17,6 +17,7 @@ import {
 } from "./pal-intelligence/instance-intel";
 import { SpeciesRoleSummary } from "./pal-intelligence/species-role-summary";
 import { hexGuid } from "../components/palbox/selectors";
+import { buildIvLabHandoff, buildSolverHandoff } from "../lib/tool-handoff";
 import {
   applyIntelInstanceFilters,
   buildIntelGroups,
@@ -159,12 +160,14 @@ function InstanceRow({
   passiveRows,
   ownerLabel,
   onOpenDex,
+  onOpenIvLab,
 }: {
   pal: OwnedPal;
   peers: OwnedPal[];
   passiveRows: ReadonlyMap<string, PassiveEntry>;
   ownerLabel: string;
   onOpenDex: () => void;
+  onOpenIvLab: () => void;
 }) {
   const gender = genderView(pal.gender);
   const avg = ivAverage(pal);
@@ -206,20 +209,29 @@ function InstanceRow({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onOpenDex}
-          className="shrink-0 rounded-md border border-line bg-raised px-2.5 py-1.5 text-[11px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink"
-        >
-          Pal-dex
-        </button>
+        <div className="flex shrink-0 flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenIvLab}
+            className="rounded-md border border-amber/35 bg-amber/5 px-2.5 py-1.5 text-[11px] font-medium text-amber transition-colors hover:bg-amber/10"
+          >
+            IV Lab
+          </button>
+          <button
+            type="button"
+            onClick={onOpenDex}
+            className="rounded-md border border-line bg-raised px-2.5 py-1.5 text-[11px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink"
+          >
+            Pal-dex
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 export default function PalIntelligence() {
-  const { saveSummary, saveLoading, saveError, playerScope, requestDex } = useAppState();
+  const { saveSummary, saveLoading, saveError, playerScope, requestDex, requestToolHandoff } = useAppState();
   const [speciesNames, setSpeciesNames] = useState<Map<string, string>>(new Map());
   const [passiveNames, setPassiveNames] = useState<Map<string, string>>(new Map());
   const [passiveRows, setPassiveRows] = useState<Map<string, PassiveEntry>>(new Map());
@@ -294,6 +306,46 @@ export default function PalIntelligence() {
     () => (selected ? sortIntelInstances(selected.instances, instanceSortKey) : []),
     [selected, instanceSortKey],
   );
+
+  function handoffSubject(group: IntelSpeciesGroup, pal?: OwnedPal) {
+    return {
+      speciesId: group.species_id,
+      speciesName: group.name,
+      ...(pal
+        ? {
+            instanceId: hexGuid(pal.instance_id),
+            instanceLabel: pal.nickname ? `“${pal.nickname}”` : `Level ${pal.level}`,
+          }
+        : {}),
+    };
+  }
+
+  function openSolver(
+    group: IntelSpeciesGroup,
+    requiredPassives: string[] = [],
+    reason = "Selected species from Pal Intelligence.",
+    pal?: OwnedPal,
+  ) {
+    const handoff = buildSolverHandoff(handoffSubject(group, pal), {
+      requiredPassives,
+      reason,
+    });
+    if (handoff) requestToolHandoff(handoff);
+  }
+
+  function openIvLab(group: IntelSpeciesGroup, pal?: OwnedPal) {
+    const handoff = buildIvLabHandoff(handoffSubject(group, pal), {
+      suggestedIvs: {
+        hp: group.iv_ranges.hp[1],
+        attack: group.iv_ranges.attack[1],
+        defense: group.iv_ranges.defense[1],
+      },
+      reason: pal
+        ? "Opened from this owned instance. Species-best owned IV floors are available as an explicit suggestion."
+        : "Opened for this species. Species-best owned IV floors are available as an explicit suggestion.",
+    });
+    if (handoff) requestToolHandoff(handoff);
+  }
 
   const ownerDistribution = useMemo(() => {
     if (!selected) return [];
@@ -394,7 +446,23 @@ export default function PalIntelligence() {
                       {selected.lucky_count > 0 && <span>{selected.lucky_count} Lucky / rare</span>}
                     </div>
                   </div>
-                  <button type="button" onClick={() => requestDex(selected.species_id)} className="rounded-md border border-line bg-raised px-3 py-2 text-[12px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink">Open species in Pal-dex</button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openSolver(selected)}
+                      className="rounded-md border border-amber/35 bg-amber/5 px-3 py-2 text-[12px] font-medium text-amber transition-colors hover:bg-amber/10"
+                    >
+                      Solver
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openIvLab(selected)}
+                      className="rounded-md border border-amber/35 bg-amber/5 px-3 py-2 text-[12px] font-medium text-amber transition-colors hover:bg-amber/10"
+                    >
+                      IV Lab
+                    </button>
+                    <button type="button" onClick={() => requestDex(selected.species_id)} className="rounded-md border border-line bg-raised px-3 py-2 text-[12px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink">Pal-dex</button>
+                  </div>
                 </div>
               </div>
 
@@ -456,6 +524,16 @@ export default function PalIntelligence() {
                 peers={selected.instances}
                 passiveRows={passiveRows}
                 onOpenPal={(pal) => requestDex(selected.species_id, hexGuid(pal.instance_id))}
+                onImproveRole={(role, pick, targetPassives) =>
+                  openSolver(
+                    selected,
+                    targetPassives,
+                    targetPassives.length > 0
+                      ? `Improve the visible best ${role} copy using only its role-relevant passives.`
+                      : `Open Solver for the visible best ${role} copy; no role-specific passive target was inferred.`,
+                    pick.pal,
+                  )
+                }
               />
               <div className="flex items-center justify-between gap-3 border-b border-line bg-raised/30 px-5 py-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Individual instances</span>
@@ -479,6 +557,7 @@ export default function PalIntelligence() {
                     passiveRows={passiveRows}
                     ownerLabel={ownerLabelForPal(pal, playerNames, baseNames)}
                     onOpenDex={() => requestDex(selected.species_id, hexGuid(pal.instance_id))}
+                    onOpenIvLab={() => openIvLab(selected, pal)}
                   />
                 ))}
               </div>

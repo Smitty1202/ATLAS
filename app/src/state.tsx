@@ -42,6 +42,7 @@ import type {
   SurgeryOption,
 } from "./lib/types";
 import type { SolveSpec } from "./lib/use-solve";
+import { handoffView, type ToolHandoff } from "./lib/tool-handoff";
 import { hexGuid } from "./components/palbox/selectors";
 
 export type View = "save" | "progress" | "intel" | "solver" | "paldex" | "ivlab" | "worldmap";
@@ -329,6 +330,12 @@ export interface AppState {
   /** Active nav view. */
   view: View;
   setView: (view: View) => void;
+  /** One-shot typed cross-tool handoff, consumed by Solver or IV Lab. */
+  toolHandoff: ToolHandoff | null;
+  /** Route to the handoff destination while preserving its visible context. */
+  requestToolHandoff: (handoff: ToolHandoff) => void;
+  /** Destination clears the pending payload after consuming it. */
+  clearToolHandoff: () => void;
   /** Species name the Solver should pre-fill on its next render, or null. */
   solveTarget: string | null;
   /** Jump to the Solver with `speciesName` pre-filled as the target. */
@@ -432,6 +439,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaveDir, setLastSaveDir] = useState<string>(readLastSaveDir);
   const [view, setView] = useState<View>("save");
+  const [toolHandoff, setToolHandoff] = useState<ToolHandoff | null>(null);
   const [solveTarget, setSolveTarget] = useState<string | null>(null);
   const [dexTarget, setDexTarget] = useState<string | null>(null);
   const [dexInstance, setDexInstance] = useState<string | null>(null);
@@ -796,6 +804,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return out;
   }, [saveSummary, playerScope]);
 
+  const requestToolHandoff = useCallback((handoff: ToolHandoff) => {
+    setToolHandoff(handoff);
+    setView(handoffView(handoff));
+  }, []);
+  const clearToolHandoff = useCallback(() => setToolHandoff(null), []);
+
   const requestSolve = useCallback((speciesName: string) => {
     setSolveTarget(speciesName);
     setView("solver");
@@ -855,6 +869,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       toast,
       view,
       setView,
+      toolHandoff,
+      requestToolHandoff,
+      clearToolHandoff,
       solveTarget,
       requestSolve,
       clearSolveTarget,
@@ -908,6 +925,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       clearSftpReconnect,
       toast,
       view,
+      toolHandoff,
+      requestToolHandoff,
+      clearToolHandoff,
       solveTarget,
       requestSolve,
       clearSolveTarget,

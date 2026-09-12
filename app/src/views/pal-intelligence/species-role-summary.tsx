@@ -5,6 +5,8 @@ import { Tag } from "../../components/primitives";
 import { CondenseBadge } from "./instance-intel";
 import {
   buildSpeciesRoleSummary,
+  roleTargetPassiveNames,
+  type IntelligenceRole,
   type SpeciesRolePick,
 } from "./species-roles";
 
@@ -52,13 +54,19 @@ function Reasons({ pick }: { pick: SpeciesRolePick }) {
 function RoleCard({
   eyebrow,
   title,
+  role,
   pick,
+  passiveRows,
   onOpen,
+  onImprove,
 }: {
   eyebrow: string;
   title: string;
+  role: IntelligenceRole;
   pick: SpeciesRolePick | null;
+  passiveRows: ReadonlyMap<string, PassiveEntry>;
   onOpen: (pal: OwnedPal) => void;
+  onImprove: (role: IntelligenceRole, pick: SpeciesRolePick, targetPassives: string[]) => void;
 }) {
   return (
     <div className="rounded-md border border-line bg-raised/45 p-3">
@@ -68,13 +76,24 @@ function RoleCard({
           <div className="mt-0.5 font-display text-sm font-semibold text-ink">{title}</div>
         </div>
         {pick && (
-          <button
-            type="button"
-            onClick={() => onOpen(pick.pal)}
-            className="shrink-0 rounded border border-line bg-panel px-2 py-1 text-[10px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink"
-          >
-            Open
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                onImprove(role, pick, roleTargetPassiveNames(role, pick.pal, passiveRows))
+              }
+              className="rounded border border-amber/35 bg-amber/5 px-2 py-1 text-[10px] font-medium text-amber transition-colors hover:bg-amber/10"
+            >
+              Improve via Solver
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpen(pick.pal)}
+              className="rounded border border-line bg-panel px-2 py-1 text-[10px] font-medium text-ink-dim transition-colors hover:border-amber/40 hover:text-ink"
+            >
+              Open
+            </button>
+          </div>
         )}
       </div>
       {pick ? (
@@ -130,10 +149,12 @@ export function SpeciesRoleSummary({
   peers,
   passiveRows,
   onOpenPal,
+  onImproveRole,
 }: {
   peers: OwnedPal[];
   passiveRows: ReadonlyMap<string, PassiveEntry>;
   onOpenPal: (pal: OwnedPal) => void;
+  onImproveRole: (role: IntelligenceRole, pick: SpeciesRolePick, targetPassives: string[]) => void;
 }) {
   const summary = useMemo(
     () => buildSpeciesRoleSummary(peers, passiveRows),
@@ -153,8 +174,24 @@ export function SpeciesRoleSummary({
         </div>
       </div>
       <div className="grid gap-3 xl:grid-cols-3">
-        <RoleCard eyebrow="Role pick" title="Best combat copy" pick={summary.combat} onOpen={onOpenPal} />
-        <RoleCard eyebrow="Role pick" title="Best worker copy" pick={summary.worker} onOpen={onOpenPal} />
+        <RoleCard
+          eyebrow="Role pick"
+          title="Best combat copy"
+          role="combat"
+          pick={summary.combat}
+          passiveRows={passiveRows}
+          onOpen={onOpenPal}
+          onImprove={onImproveRole}
+        />
+        <RoleCard
+          eyebrow="Role pick"
+          title="Best worker copy"
+          role="worker"
+          pick={summary.worker}
+          passiveRows={passiveRows}
+          onOpen={onOpenPal}
+          onImprove={onImproveRole}
+        />
         <div className="rounded-md border border-line bg-raised/45 p-3">
           <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber">Breeding core</div>
           <div className="mt-0.5 font-display text-sm font-semibold text-ink">Recommended male + female breeding core</div>

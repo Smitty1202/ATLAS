@@ -3,6 +3,13 @@
 Notable changes per release, newest first. Dates are ship dates unless a
 version is marked Unreleased.
 
+## [0.6.0] - Unreleased
+
+### Added
+- Added typed Pal Intelligence handoffs into Solver and IV Lab so selected species and owned-instance context carry across tools without duplicating breeding or IV-planning logic.
+- Best combat/worker role cards can prefill Solver with only the role-relevant passives already justified by visible Pal Intelligence evidence.
+- IV Lab handoffs carry species-best owned IVs as an explicit suggestion; IV floors stay unchanged until the user chooses `Use floors`.
+
 ## [0.5.1] - Unreleased
 
 ### Fixed

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { OwnedPal, PassiveEntry } from "../../lib/types";
-import { buildSpeciesRoleSummary } from "./species-roles";
+import { buildSpeciesRoleSummary, roleTargetPassiveNames } from "./species-roles";
 
 const A = Array.from({ length: 16 }, (_, index) => index + 1);
 const B = Array.from({ length: 16 }, (_, index) => index + 21);
@@ -161,4 +161,17 @@ describe("Pal Intelligence species role picks", () => {
     const summary = buildSpeciesRoleSummary([cleanInvested, penalized, uninvested], rows);
     expect(summary.worker?.pal.instance_id).toEqual(A);
   });
+
+  test("role handoff passives include only the visible role evidence", () => {
+    const mixed = pal({
+      instance_id: D,
+      passives: ["Musclehead", "Artisan", "Immovable", "Clumsy"],
+    });
+    expect(roleTargetPassiveNames("combat", mixed, rows)).toEqual(["Musclehead"]);
+    expect(roleTargetPassiveNames("worker", mixed, rows)).toEqual([
+      "Artisan",
+      "Heart of the Immovable King",
+    ]);
+  });
+
 });
