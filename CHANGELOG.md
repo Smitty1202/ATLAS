@@ -6,6 +6,8 @@ version is marked Unreleased.
 ## [0.6.0] - Unreleased
 
 ### Added
+- Added cross-species Roster Intelligence for Mining, Lumbering, Transporting, and Combat, with deterministic top owned picks, visible ranking evidence, specialist-depth warnings, and one-click drill-down into Species Intelligence.
+- Roster Intelligence keeps one best instance per species so duplicate copies cannot crowd out role coverage, reuses existing combat/work passive evidence, and treats work suitability Lv3+ as explicit specialist coverage.
 - Added roster-level Condensation Intelligence with recommended combat/worker targets plus Safe to Condense, Likely Fodder, Protected Core, and Needs Review groups backed by visible same-species evidence.
 - Condensation Intelligence now builds a small keeper core first: role picks, breeding core, special/invested copies, Rank 3+ / Rainbow / World Tree passive coverage, and species-best IV coverage are preserved without protecting every duplicate carrier.
 - Safe material may preserve evidence across multiple keeper-core Pals instead of requiring one single all-dominating comparator; lower-tier passive or equipped-move tradeoffs are surfaced as Likely Fodder, while unknown metadata stays in Needs Review.

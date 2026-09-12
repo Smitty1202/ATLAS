@@ -17,6 +17,7 @@ import {
 } from "./pal-intelligence/instance-intel";
 import { SpeciesRoleSummary } from "./pal-intelligence/species-role-summary";
 import { CondensationSummaryPanel } from "./pal-intelligence/condensation-summary";
+import { RosterIntelligencePanel } from "./pal-intelligence/roster-intelligence-panel";
 import { hexGuid } from "../components/palbox/selectors";
 import { buildIvLabHandoff, buildSolverHandoff } from "../lib/tool-handoff";
 import {
@@ -243,6 +244,7 @@ export default function PalIntelligence() {
   const [instanceSortKey, setInstanceSortKey] = useState<IntelInstanceSortKey>("iv");
   const [selectedSpecies, setSelectedSpecies] = useState<string | null>(null);
   const [showAllPassives, setShowAllPassives] = useState(false);
+  const [mode, setMode] = useState<"inventory" | "roster">("inventory");
 
   useEffect(() => {
     invoke<NamedEntry[]>("list_species")
@@ -392,7 +394,32 @@ export default function PalIntelligence() {
         </div>
       </header>
 
-      <div className="grid shrink-0 grid-cols-[minmax(240px,1.5fr)_repeat(3,minmax(145px,0.6fr))] gap-2 border-b border-line bg-panel/40 px-6 py-3">
+      <div className="flex shrink-0 gap-2 border-b border-line bg-panel/30 px-6 py-2.5">
+        <button
+          type="button"
+          onClick={() => setMode("inventory")}
+          className={`rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            mode === "inventory"
+              ? "border-amber/40 bg-amber/10 text-amber"
+              : "border-line bg-raised text-ink-faint hover:border-amber/30 hover:text-ink"
+          }`}
+        >
+          Inventory
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("roster")}
+          className={`rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            mode === "roster"
+              ? "border-amber/40 bg-amber/10 text-amber"
+              : "border-line bg-raised text-ink-faint hover:border-amber/30 hover:text-ink"
+          }`}
+        >
+          Roster Intelligence
+        </button>
+      </div>
+
+      <div className={`${mode === "roster" ? "hidden " : ""}grid shrink-0 grid-cols-[minmax(240px,1.5fr)_repeat(3,minmax(145px,0.6fr))] gap-2 border-b border-line bg-panel/40 px-6 py-3`}>
         <input
           value={search}
           onChange={(event) => setSearch(event.currentTarget.value)}
@@ -412,7 +439,21 @@ export default function PalIntelligence() {
 
       {saveError && <div className="shrink-0 border-b border-bad/30 bg-bad/10 px-6 py-2 text-[11px] text-bad">{saveError}</div>}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(330px,0.9fr)_minmax(0,1.55fr)]">
+      {mode === "roster" && (
+        <RosterIntelligencePanel
+          pals={scoped}
+          passiveRows={passiveRows}
+          onInspectSpecies={(speciesId) => {
+            setSearch("");
+            setLocation("all");
+            setSpecial("all");
+            setSelectedSpecies(speciesId);
+            setMode("inventory");
+          }}
+        />
+      )}
+
+      <div className={`${mode === "roster" ? "hidden " : ""}grid min-h-0 flex-1 grid-cols-[minmax(330px,0.9fr)_minmax(0,1.55fr)]`}>
         <section className="min-h-0 overflow-y-auto border-r border-line">
           {groups.length === 0 ? (
             <div className="p-8 text-center text-sm text-ink-faint">No owned Pals match these filters.</div>
